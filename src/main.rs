@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use indoc::indoc;
+use colored::Colorize;
 
 mod backend;
 
@@ -24,11 +25,22 @@ enum Commands {
 	/// Runs the project's test suite
 	Test,
 
-	/// Builds the project to the target directory
+	/// Builds the project to the target directory using gcc or clang, if available.
 	Build,
 
-	/// Builds and runs the project
+	/// Builds and runs the project using gcc or clang, if available.
 	Run,
+
+	// Removes compiled programs
+	Clean,
+
+	/// Generates documentation using cldoc or doxygen, if available.
+	Doc,
+
+	/// Creates a read eval print loop with igcc or bic, if available.
+	Repl
+
+
 }
 
 fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
@@ -37,9 +49,7 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 
 	let main = src.join("main.c");
 	std::fs::write(&main, indoc! {r#"
-		int adder(int a, int b) {
-			return a + b;
-		}
+		#include <stdio.h>
 
 		int main() {
 			printf("Hello, world!\n");
@@ -52,9 +62,10 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 
 	let main_test = tests.join("main.test.c");
 	std::fs::write(main_test, indoc!{r#"
+		#include <assert.h>
+
 		int main() {
-			int result = adder(5, 10);
-			assert(result == 15, "5 + 10 = 15");
+			assert( (1 + 2 == 3) && "C is broken" );
 		}
 	"#})?;
 
@@ -102,7 +113,51 @@ fn main() -> anyhow::Result<()> {
 		},
 
 		Some(Commands::Test) => {
-			anyhow::bail!("Unimplemented: test");
+			let config = std::path::Path::new("cpkg.toml");
+			if !config.exists() {
+				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
+			}
+
+			let target = std::path::Path::new("target");
+			if !target.exists() {
+				std::fs::create_dir(&target)?;
+			}
+
+			let tests = std::path::Path::new("tests");
+
+			let out = target.join("test");
+			if !out.exists() {
+				std::fs::create_dir(&out)?;
+			}
+
+			let backend = backend::find_backend()?;
+
+			let now = std::time::Instant::now();
+
+			let mut compiled_tests = vec![];
+
+			for entry in tests.read_dir()? {
+				if let Ok(entry) = entry {
+					let path = entry.path();
+					let out = out.join(&path.file_stem().unwrap());
+
+					backend.compile(&path, &[], &out)?;
+					compiled_tests.push(out);
+				}
+			}
+
+			for test in &compiled_tests {
+				let out = std::process::Command::new(test)
+					.output()?;
+
+				if out.status.success() {
+					println!("✅ {} {}", test.display(), "passed".green());
+				} else {
+					eprintln!("{} {}: {}", test.display(), "failed".red(), String::from_utf8_lossy(&out.stderr).trim_end());
+				}
+			}
+
+			println!("Successfully ran {} tests in {}s.", compiled_tests.len(), now.elapsed().as_secs_f32());
 		},
 
 		Some(Commands::Build) => {
@@ -121,10 +176,13 @@ fn main() -> anyhow::Result<()> {
 				std::fs::create_dir(target)?;
 			}
 
-			let out = target.join("out");
+			let now = std::time::Instant::now();
 
-			let b = backend::find_backend()?;
-			b.compile(main, &[], &out)?;
+			let out = target.join("out");
+			let backend = backend::find_backend()?;
+			backend.compile(main, &[], &out)?;
+
+			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
 
 		Some(Commands::Run) => {
@@ -151,6 +209,30 @@ fn main() -> anyhow::Result<()> {
 			std::process::Command::new(out)
 				.spawn()?;
 		},
+
+		Some(Commands::Clean) => {
+			let config = std::path::Path::new("cpkg.toml");
+			if !config.exists() {
+				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
+			}
+
+			let target = std::path::Path::new("target");
+			if !target.exists() {
+				anyhow::bail!("Failed to clean target directory. Doesn't seem to exist.");
+			}
+
+			std::fs::remove_dir_all(target)?;
+
+			println!("Removed target directory.");
+		},
+
+		Some(Commands::Doc) => {
+			anyhow::bail!("Doc is not implemented");
+		},
+
+		Some(Commands::Repl) => {
+			anyhow::bail!("Repl is not implemented");
+		}
 
 		None => ()
 	}

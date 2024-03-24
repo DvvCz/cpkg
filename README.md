@@ -9,6 +9,7 @@ It just creates and compiles projects for you, handling your respective backends
 ```
 cpkg new hello_world
 cd hello_world
+cpkg test
 cpkg run
 ```
 
