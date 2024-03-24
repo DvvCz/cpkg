@@ -1,0 +1,10 @@
+[package]
+name = "cpkg"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.81"
+clap = { version = "4.5.3", features = ["derive"] }
+indoc = "2.0.5"
+which = "6.0.1"
