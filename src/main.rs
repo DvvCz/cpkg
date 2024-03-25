@@ -2,7 +2,8 @@ use clap::{Parser, Subcommand};
 use indoc::indoc;
 use colored::Colorize;
 
-mod backend;
+mod compiler;
+mod docgen;
 
 /// Dead simple C package manager
 #[derive(Parser)]
@@ -35,12 +36,13 @@ enum Commands {
 	Clean,
 
 	/// Generates documentation using cldoc or doxygen, if available.
-	Doc,
+	Doc {
+		#[arg(short, long)]
+		open: bool
+	},
 
 	/// Creates a read eval print loop with igcc or bic, if available.
 	Repl
-
-
 }
 
 fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
@@ -130,7 +132,7 @@ fn main() -> anyhow::Result<()> {
 				std::fs::create_dir(&out)?;
 			}
 
-			let backend = backend::find_backend()?;
+			let backend = compiler::try_locate()?;
 
 			let now = std::time::Instant::now();
 
@@ -179,7 +181,7 @@ fn main() -> anyhow::Result<()> {
 			let now = std::time::Instant::now();
 
 			let out = target.join("out");
-			let backend = backend::find_backend()?;
+			let backend = compiler::try_locate()?;
 			backend.compile(main, &[], &out)?;
 
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
@@ -203,7 +205,7 @@ fn main() -> anyhow::Result<()> {
 
 			let out = target.join("out");
 
-			let b = backend::find_backend()?;
+			let b = compiler::try_locate()?;
 			b.compile(main, &[], &out)?;
 
 			std::process::Command::new(out)
@@ -226,8 +228,34 @@ fn main() -> anyhow::Result<()> {
 			println!("Removed target directory.");
 		},
 
-		Some(Commands::Doc) => {
-			anyhow::bail!("Doc is not implemented");
+		Some(Commands::Doc { open }) => {
+			let config = std::path::Path::new("cpkg.toml");
+			if !config.exists() {
+				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
+			}
+
+			let backend = docgen::try_locate()?;
+
+			let target = std::path::Path::new("target");
+			if !target.exists() {
+				std::fs::create_dir(target)?;
+			}
+
+			let doc = target.join("doc");
+			if !doc.exists() {
+				std::fs::create_dir(&doc)?;
+			}
+
+			let now = std::time::Instant::now();
+
+			let proj = std::path::Path::new("src");
+			backend.generate(proj, &doc)?;
+
+			println!("Generated documentation in {}s", now.elapsed().as_secs_f32());
+
+			if *open {
+				backend.open(&doc)?;
+			}
 		},
 
 		Some(Commands::Repl) => {

@@ -13,6 +13,16 @@ cpkg test
 cpkg run
 ```
 
+## Features
+- [x] `new`
+- [x] `init`
+- [x] `build`
+- [x] `run`
+- [x] `test`
+- [x] `doc` w/ Doxygen
+- [ ] `repl`
+- [ ] `format`
+
 ## Installation
 
 Currently not on crates.io and not planned anytime soon.

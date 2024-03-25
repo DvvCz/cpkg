@@ -1,12 +1,12 @@
-pub trait Backend {
+pub trait Compiler {
 	fn compile(&self, file: &std::path::Path, deps: &[std::path::PathBuf], to: &std::path::Path) -> anyhow::Result<()>;
 }
 
-pub struct GccBackend {
+pub struct Gcc {
 	path: std::path::PathBuf
 }
 
-impl Backend for GccBackend {
+impl Compiler for Gcc {
 	fn compile(&self, file: &std::path::Path, _deps: &[std::path::PathBuf], to: &std::path::Path) -> anyhow::Result<()> {
 		let e = std::process::Command::new(&self.path)
 			.arg(file)
@@ -25,11 +25,11 @@ impl Backend for GccBackend {
 
 /// Tries to find an available C compiler backend.
 /// Currently only supports gcc -> clang.
-pub fn find_backend() -> anyhow::Result<Box<dyn Backend>> {
+pub fn try_locate() -> anyhow::Result<Box<dyn Compiler>> {
 	match which::which("gcc") {
-		Ok(path) => Ok(Box::new(GccBackend { path })),
+		Ok(path) => Ok(Box::new(Gcc { path })),
 		Err(_) => match which::which("clang") {
-			Ok(path) => Ok(Box::new(GccBackend { path })), // api should be compatible enough to my knowledge.
+			Ok(path) => Ok(Box::new(Gcc { path })), // api should be compatible enough to my knowledge.
 			Err(_) => Err(anyhow::anyhow!("Couldn't find gcc or clang."))
 		}
 	}
