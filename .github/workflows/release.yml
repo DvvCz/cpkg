@@ -10,8 +10,8 @@ jobs:
     strategy:
       matrix:
         config:
-          - { os: ubuntu-latest, bin: target/release/cpkg, target: "x86_64-unknown-linux-gnu" }
-          - { os: windows-latest, bin: target/release/cpkg.exe, target: "x86_64-pc-windows-msvc" }
+          - { os: ubuntu-latest, bin: target/release/x86_64-unknown-linux-gnu/cpkg, target: "x86_64-unknown-linux-gnu" }
+          - { os: windows-latest, bin: target/release/x86_64-pc-windows-msvc/cpkg.exe, target: "x86_64-pc-windows-msvc" }
           - { os: windows-latest, bin: target/release/i686-pc-windows-msvc/cpkg.exe, target: "i686-pc-windows-msvc" }
 
     runs-on: ${{ matrix.config.os }}
@@ -22,9 +22,6 @@ jobs:
         run: |
           rustup target add ${{ matrix.config.target }}
           cargo build --target ${{ matrix.config.target }} --release
-
-      - name: Zip & Rename
-        run: mv ${{ matrix.config.bin }} "cpkg-${{ github.ref_name }}-${{ matrix.config.target }}"
 
       - name: Rename (Linux)
         if: runner.os == 'Linux'
