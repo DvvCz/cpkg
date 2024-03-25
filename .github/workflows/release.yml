@@ -10,18 +10,38 @@ jobs:
     strategy:
       matrix:
         config:
-          - { os: ubuntu-latest, bin: target/release/cpkg }
-          - { os: windows-latest, bin: target/release/cpkg.exe }
+          - { os: ubuntu-latest, bin: target/release/cpkg, target: "x86_64-unknown-linux-gnu" }
+          - { os: windows-latest, bin: target/release/cpkg.exe, target: "x86_64-pc-windows-msvc" }
+          - { os: windows-latest, bin: target/release/i686-pc-windows-msvc/cpkg.exe, target: "i686-pc-windows-msvc" }
 
     runs-on: ${{ matrix.config.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
 
       - name: Build
-        run: cargo build --release
+        run: |
+          rustup target add ${{ matrix.config.target }}
+          cargo build --target ${{ matrix.config.target }} --release
 
-      - name: Upload
+      - name: Zip & Rename
+        run: mv ${{ matrix.config.bin }} "cpkg-${{ github.ref_name }}-${{ matrix.config.target }}"
+
+      - name: Rename (Linux)
+        if: runner.os == 'Linux'
+        run: mv ${{ matrix.config.bin }} cpkg-${{ github.ref_name }}-${{ matrix.config.target }}
+
+      - name: Rename (Windows)
+        if: runner.os == 'Windows'
+        run: move ${{ matrix.config.bin }} cpkg-${{ github.ref_name }}-${{ matrix.config.target }}.exe
+
+      - name: Upload (Linux)
+        if: runner.os == 'Linux'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.config.bin }}
+          files: cpkg-${{ github.ref_name }}-${{ matrix.config.target }}
+
+      - name: Upload (Windows)
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: cpkg-${{ github.ref_name }}-${{ matrix.config.target }}.exe

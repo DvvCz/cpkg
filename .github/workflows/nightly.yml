@@ -9,13 +9,12 @@ jobs:
     strategy:
       matrix:
         config:
-          - { os: ubuntu-latest, bin: target/release/cpkg, name: cpkg (linux) }
-          - { os: windows-latest, bin: target/release/cpkg.exe, name: cpkg (windows) }
+          - { os: ubuntu-latest, bin: target/release/cpkg, name: cpkg (linux x64) }
+          - { os: windows-latest, bin: target/release/cpkg.exe, name: cpkg (windows x64) }
 
     runs-on: ${{ matrix.config.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
 
       - name: Build
         run: cargo build --release
