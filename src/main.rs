@@ -43,7 +43,7 @@ enum Commands {
 		open: bool
 	},
 
-	/// Creates a read eval print loop with igcc or bic, if available.
+	/// Creates a REPL with gcc or clang, if available.
 	Repl,
 
 	/// Updates to the latest version of cpkg
