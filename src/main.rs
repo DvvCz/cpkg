@@ -279,12 +279,11 @@ fn main() -> anyhow::Result<()> {
 
 			let mut buffer = String::new();
 
-			loop {
-				stdout.write(b"> ")?;
-				stdout.flush()?;
+			let mut editor = rustyline::DefaultEditor::new()?;
 
-				let mut temp = String::new();
-				stdin.read_line(&mut temp)?;
+			loop {
+				let mut temp = editor.readline("> ")?;
+				editor.add_history_entry(&temp)?;
 
 				let total = [buffer.clone(), temp].join("");
 
@@ -297,11 +296,25 @@ fn main() -> anyhow::Result<()> {
 
 				match backend.compile(&temp_repl, &[], &temp_bin, &CompilerFlags::REPL) {
 					Ok(_) => {
-						buffer = total;
+						let mut out = std::process::Command::new(&temp_bin)
+							.output()?;
 
-						std::process::Command::new(&temp_bin)
-							.spawn()?
-							.wait()?;
+						if out.status.success() {
+							buffer = total; // Only update entire code if ran successfully
+
+							if out.stdout.ends_with(b"\n") {
+								stdout.write(&out.stdout)?;
+							} else { // If no newline present, add one to the end to avoid breaking rendering
+								out.stdout.push(b'\n');
+								stdout.write(&out.stdout)?;
+							}
+						} else {
+							stdout.write(b"Failed to run: ")?;
+							stdout.write(&out.stderr)?;
+							stdout.write(b"\n")?;
+						}
+
+						stdout.flush()?;
 					},
 					Err(_) => ()
 				}
