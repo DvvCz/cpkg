@@ -1,5 +1,22 @@
+pub struct CompilerFlags {
+	/// Whether to invoke the compiler in "repl" mode, aka silence everything that isn't an error
+	repl: bool,
+}
+
+impl CompilerFlags {
+	pub const REPL: Self = Self { repl: true };
+}
+
+impl Default for CompilerFlags {
+	fn default() -> Self {
+		Self {
+			repl: false
+		}
+	}
+}
+
 pub trait Compiler {
-	fn compile(&self, file: &std::path::Path, deps: &[std::path::PathBuf], to: &std::path::Path) -> anyhow::Result<()>;
+	fn compile(&self, file: &std::path::Path, deps: &[std::path::PathBuf], to: &std::path::Path, flags: &CompilerFlags) -> anyhow::Result<()>;
 }
 
 pub struct Gcc {
@@ -7,11 +24,19 @@ pub struct Gcc {
 }
 
 impl Compiler for Gcc {
-	fn compile(&self, file: &std::path::Path, _deps: &[std::path::PathBuf], to: &std::path::Path) -> anyhow::Result<()> {
-		let e = std::process::Command::new(&self.path)
+	fn compile(&self, file: &std::path::Path, _deps: &[std::path::PathBuf], to: &std::path::Path, flags: &CompilerFlags) -> anyhow::Result<()> {
+		let mut cmd = std::process::Command::new(&self.path);
+
+		let mut cmd = cmd
 			.arg(file)
 			.arg("-o")
-			.arg(to)
+			.arg(to);
+
+		if flags.repl {
+			cmd = cmd.arg("-w");
+		}
+
+		let e = cmd
 			.spawn()?
 			.wait()?;
 

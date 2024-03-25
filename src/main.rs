@@ -2,6 +2,8 @@ use clap::{Parser, Subcommand};
 use indoc::indoc;
 use colored::Colorize;
 
+use crate::compiler::CompilerFlags;
+
 mod compiler;
 mod docgen;
 
@@ -146,7 +148,7 @@ fn main() -> anyhow::Result<()> {
 					let path = entry.path();
 					let out = out.join(&path.file_stem().unwrap());
 
-					backend.compile(&path, &[], &out)?;
+					backend.compile(&path, &[], &out, &Default::default())?;
 					compiled_tests.push(out);
 				}
 			}
@@ -185,7 +187,7 @@ fn main() -> anyhow::Result<()> {
 
 			let out = target.join("out");
 			let backend = compiler::try_locate()?;
-			backend.compile(main, &[], &out)?;
+			backend.compile(main, &[], &out, &Default::default())?;
 
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
@@ -209,7 +211,7 @@ fn main() -> anyhow::Result<()> {
 			let out = target.join("out");
 
 			let b = compiler::try_locate()?;
-			b.compile(main, &[], &out)?;
+			b.compile(main, &[], &out, &Default::default())?;
 
 			std::process::Command::new(out)
 				.spawn()?;
@@ -262,7 +264,48 @@ fn main() -> anyhow::Result<()> {
 		},
 
 		Some(Commands::Repl) => {
-			anyhow::bail!("Repl is not implemented");
+			use std::io::{Write, BufRead};
+
+			println!("{}", "Please note that the repl is very basic and experimental.\nYour code will run entirely each line.".yellow());
+
+			let backend = compiler::try_locate()?;
+
+			let temp = std::env::temp_dir();
+			let temp_repl = temp.join("cpkg_repl.c");
+			let temp_bin = temp.join("cpkg_repl");
+
+			let mut stdout = std::io::stdout().lock();
+			let mut stdin = std::io::stdin().lock();
+
+			let mut buffer = String::new();
+
+			loop {
+				stdout.write(b"> ")?;
+				stdout.flush()?;
+
+				let mut temp = String::new();
+				stdin.read_line(&mut temp)?;
+
+				let total = [buffer.clone(), temp].join("");
+
+				std::fs::write(&temp_repl, indoc::formatdoc!(r#"
+					int main() {{
+						{total}
+						return 0;
+					}}
+				"#))?;
+
+				match backend.compile(&temp_repl, &[], &temp_bin, &CompilerFlags::REPL) {
+					Ok(_) => {
+						buffer = total;
+
+						std::process::Command::new(&temp_bin)
+							.spawn()?
+							.wait()?;
+					},
+					Err(_) => ()
+				}
+			}
 		},
 
 		Some(Commands::Upgrade) => {
