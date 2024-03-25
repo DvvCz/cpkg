@@ -6,7 +6,7 @@ pub trait Docgen {
 pub struct Doxygen;
 
 impl Docgen for Doxygen {
-	fn generate(&self, src: &std::path::Path, to: &std::path::Path) -> anyhow::Result<()> {
+	fn generate(&self, _src: &std::path::Path, to: &std::path::Path) -> anyhow::Result<()> {
 		let config = to.join("Doxyfile");
 
 		std::fs::write(&config, indoc::formatdoc! {"
@@ -50,7 +50,7 @@ impl Docgen for Cldoc {
 		Ok(())
 	}
 
-	fn open(&self, to: &std::path::Path) -> anyhow::Result<()> {
+	fn open(&self, _to: &std::path::Path) -> anyhow::Result<()> {
 		anyhow::bail!("Open is not yet implemented for cldoc. Sorry!")
 	}
 }

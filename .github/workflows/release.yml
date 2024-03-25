@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        config:
+          - { os: ubuntu-latest, bin: target/release/cpkg }
+          - { os: windows-latest, bin: target/release/cpkg.exe }
+
+    runs-on: ${{ matrix.config.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpkg
+          path: ${{ matrix.config.bin }}

@@ -42,7 +42,10 @@ enum Commands {
 	},
 
 	/// Creates a read eval print loop with igcc or bic, if available.
-	Repl
+	Repl,
+
+	/// Updates to the latest version of cpkg
+	Upgrade
 }
 
 fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
@@ -260,6 +263,17 @@ fn main() -> anyhow::Result<()> {
 
 		Some(Commands::Repl) => {
 			anyhow::bail!("Repl is not implemented");
+		},
+
+		Some(Commands::Upgrade) => {
+			self_update::backends::github::Update::configure()
+				.repo_owner("DvvCz")
+				.repo_name("cpkg")
+				.bin_name("cpkg")
+				.show_download_progress(true)
+				.current_version(self_update::cargo_crate_version!())
+				.build()?
+				.update()?;
 		}
 
 		None => ()

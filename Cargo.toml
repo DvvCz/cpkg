@@ -1,6 +1,6 @@
 [package]
 name = "cpkg"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
@@ -8,4 +8,6 @@ anyhow = "1.0.81"
 clap = { version = "4.5.3", features = ["derive"] }
 colored = "2.1.0"
 indoc = "2.0.5"
+nanoserde = "0.1.37"
+self_update = "0.39.0"
 which = "6.0.1"
