@@ -5,7 +5,7 @@ on:
     branches: [ master ]
 
 jobs:
-  release:
+  nightly:
     strategy:
       matrix:
         config:
