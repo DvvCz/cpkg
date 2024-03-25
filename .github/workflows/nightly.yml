@@ -1,0 +1,27 @@
+name: Nightly
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        config:
+          - { os: ubuntu-latest, bin: target/release/cpkg, name: cpkg (linux) }
+          - { os: windows-latest, bin: target/release/cpkg.exe, name: cpkg (windows) }
+
+    runs-on: ${{ matrix.config.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.name }}
+          path: ${{ matrix.config.bin }}
