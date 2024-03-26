@@ -18,36 +18,36 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-	/// Creates a template project at a given directory
+	#[command(about = "Creates a template project at a given directory.")]
 	New {
 		/// Name of folder to create new project inside of.
 		name: String
 	},
-	/// Initializes a template project at the cwd
+	#[command(about = "Initializes a template project at the cwd.\n\x1b[31m")]
 	Init,
 
-	/// Runs the project's test suite
-	Test,
-
-	/// Builds the project to the target directory using gcc or clang, if available.
+	#[command(about = "Builds the project to the target directory using gcc or clang, if available.\x1b[31m")]
 	Build,
 
-	/// Builds and runs the project using gcc or clang, if available.
+	#[command(about = "Builds and runs the project using gcc or clang, if available.\x1b[31m")]
 	Run,
 
-	// Removes compiled programs
+	#[command(about = "Runs the project's test suite.\n\x1b[33m")]
+	Test,
+
+	#[command(about = "Removes compiled programs from the project.\x1b[33m")]
 	Clean,
 
-	/// Generates documentation using cldoc or doxygen, if available.
+	#[command(about = "Generates documentation for the project using doxygen, if available.\n\x1b[36m")]
 	Doc {
 		#[arg(short, long)]
 		open: bool
 	},
 
-	/// Creates a REPL with gcc or clang, if available.
+	#[command(about = "Creates a REPL with gcc or clang, if available.\x1b[36m")]
 	Repl,
 
-	/// Updates to the latest version of cpkg
+	#[command(about = "Updates to the latest version of cpkg.\n\x1b[35m")]
 	Upgrade
 }
 
@@ -331,7 +331,9 @@ fn main() -> anyhow::Result<()> {
 				.current_version(self_update::cargo_crate_version!())
 				.build()?
 				.update()?;
-		}
+		},
+
+		_ => ()
 	}
 
 	Ok(())
