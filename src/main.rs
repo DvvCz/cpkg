@@ -10,9 +10,10 @@ mod docgen;
 /// Dead simple C package manager
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
+#[command(arg_required_else_help = true)]
 struct Cli {
 	#[command(subcommand)]
-	command: Option<Commands>,
+	command: Commands,
 }
 
 #[derive(Subcommand)]
@@ -99,7 +100,7 @@ fn main() -> anyhow::Result<()> {
 	let args = Cli::parse();
 
 	match &args.command {
-		Some(Commands::New { name }) => {
+		Commands::New { name } => {
 			let p = std::path::Path::new(name);
 
 			if p.exists() {
@@ -110,7 +111,7 @@ fn main() -> anyhow::Result<()> {
 			}
 		},
 
-		Some(Commands::Init) => {
+		Commands::Init => {
 			let p = std::env::current_dir()?;
 			if p.read_dir()?.next().is_none() {
 				init_project(&p)?;
@@ -119,7 +120,7 @@ fn main() -> anyhow::Result<()> {
 			}
 		},
 
-		Some(Commands::Test) => {
+		Commands::Test => {
 			let config = std::path::Path::new("cpkg.toml");
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
@@ -167,7 +168,7 @@ fn main() -> anyhow::Result<()> {
 			println!("Successfully ran {} tests in {}s.", compiled_tests.len(), now.elapsed().as_secs_f32());
 		},
 
-		Some(Commands::Build) => {
+		Commands::Build => {
 			let config = std::path::Path::new("cpkg.toml");
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
@@ -192,7 +193,7 @@ fn main() -> anyhow::Result<()> {
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
 
-		Some(Commands::Run) => {
+		Commands::Run => {
 			let config = std::path::Path::new("cpkg.toml");
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
@@ -217,7 +218,7 @@ fn main() -> anyhow::Result<()> {
 				.spawn()?;
 		},
 
-		Some(Commands::Clean) => {
+		Commands::Clean => {
 			let config = std::path::Path::new("cpkg.toml");
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
@@ -233,7 +234,7 @@ fn main() -> anyhow::Result<()> {
 			println!("Removed target directory.");
 		},
 
-		Some(Commands::Doc { open }) => {
+		Commands::Doc { open } => {
 			let config = std::path::Path::new("cpkg.toml");
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
@@ -263,7 +264,7 @@ fn main() -> anyhow::Result<()> {
 			}
 		},
 
-		Some(Commands::Repl) => {
+		Commands::Repl => {
 			use std::io::{Write, BufRead};
 
 			println!("{}", "Please note that the repl is very basic and experimental.\nYour code will run entirely each line.".yellow());
@@ -321,7 +322,7 @@ fn main() -> anyhow::Result<()> {
 			}
 		},
 
-		Some(Commands::Upgrade) => {
+		Commands::Upgrade => {
 			self_update::backends::github::Update::configure()
 				.repo_owner("DvvCz")
 				.repo_name("cpkg")
@@ -331,8 +332,6 @@ fn main() -> anyhow::Result<()> {
 				.build()?
 				.update()?;
 		}
-
-		None => ()
 	}
 
 	Ok(())
