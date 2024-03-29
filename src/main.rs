@@ -30,8 +30,10 @@ enum Commands {
 	#[command(about = "Builds the project to the target directory using gcc or clang, if available.\x1b[31m")]
 	Build,
 
-	#[command(about = "Builds and runs the project using gcc or clang, if available.\x1b[31m")]
-	Run,
+	#[command(about = "Runs the project's main file, or a standalone c file.\x1b[31m")]
+	Run {
+		path: Option<String>
+	},
 
 	#[command(about = "Runs the project's test suite.\n\x1b[33m")]
 	Test,
@@ -208,7 +210,26 @@ fn main() -> anyhow::Result<()> {
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
 
-		Commands::Run => {
+		Commands::Run { path } => {
+			if let Some(path) = path {
+				let path = std::path::Path::new(path);
+
+				if !path.exists() {
+					anyhow::bail!("File does not exist.");
+				}
+
+				let temp = std::env::temp_dir();
+				let temp_bin = temp.join("cpkg_run");
+
+				let b = compiler::try_locate()?;
+				b.compile(&path, &[], &temp_bin, &Default::default())?;
+
+				std::process::Command::new(&temp_bin)
+					.spawn()?;
+				
+				return Ok(());
+			}
+
 			let config = std::path::Path::new("cpkg.toml");
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
