@@ -135,8 +135,6 @@ fn main() -> anyhow::Result<()> {
 				std::fs::create_dir(&target)?;
 			}
 
-			let tests = std::path::Path::new("tests");
-
 			let out = target.join("test");
 			if !out.exists() {
 				std::fs::create_dir(&out)?;
@@ -146,26 +144,36 @@ fn main() -> anyhow::Result<()> {
 
 			let now = std::time::Instant::now();
 
+			let tests = std::path::Path::new("tests");
+			let tests = walkdir::WalkDir::new(tests)
+				.into_iter()
+				.flat_map(std::convert::identity) // Remove walkdir fails
+				.filter(|e| e.file_type().is_file()) // Remove directories
+				.filter(|e| e.path().extension().filter(|ext| *ext == "c").is_some()) // Only testing .c files
+				.map(|e| e.path().to_owned());
+
 			let mut compiled_tests = vec![];
 
-			for entry in tests.read_dir()? {
-				if let Ok(entry) = entry {
-					let path = entry.path();
-					let out = out.join(&path.file_stem().unwrap());
+			for test_path in tests { // Todo: Convert to iterator
+				use std::hash::{Hash, Hasher};
 
-					backend.compile(&path, &[], &out, &Default::default())?;
-					compiled_tests.push(out);
-				}
+				let mut hasher = std::hash::DefaultHasher::new();
+				test_path.hash(&mut hasher);
+				let hash = hasher.finish().to_string();
+
+				let out = out.join(hash);
+				backend.compile(&test_path, &[], &out, &Default::default())?;
+				compiled_tests.push((test_path, out));
 			}
 
-			for test in &compiled_tests {
-				let out = std::process::Command::new(test)
+			for (src, compiled) in &compiled_tests {
+				let out = std::process::Command::new(compiled)
 					.output()?;
 
 				if out.status.success() {
-					println!("✅ {} {}", test.display(), "passed".green());
+					println!("✅ {} {}", src.display(), "passed".green());
 				} else {
-					eprintln!("{} {}: {}", test.display(), "failed".red(), String::from_utf8_lossy(&out.stderr).trim_end());
+					eprintln!("{} {}: {}", src.display(), "failed".red(), String::from_utf8_lossy(&out.stderr).trim_end());
 				}
 			}
 
@@ -285,7 +293,7 @@ fn main() -> anyhow::Result<()> {
 		},
 
 		Commands::Repl => {
-			use std::io::{Write, BufRead};
+			use std::io::Write;
 
 			println!("{}", "Please note that the repl is very basic and experimental.\nYour code will run entirely each line.".yellow());
 
@@ -296,14 +304,12 @@ fn main() -> anyhow::Result<()> {
 			let temp_bin = temp.join("cpkg_repl");
 
 			let mut stdout = std::io::stdout().lock();
-			let mut stdin = std::io::stdin().lock();
-
 			let mut buffer = String::new();
 
 			let mut editor = rustyline::DefaultEditor::new()?;
 
 			loop {
-				let mut temp = editor.readline("> ")?;
+				let temp = editor.readline("> ")?;
 				editor.add_history_entry(&temp)?;
 
 				let total = [buffer.clone(), temp].join("");
@@ -351,9 +357,7 @@ fn main() -> anyhow::Result<()> {
 				.current_version(self_update::cargo_crate_version!())
 				.build()?
 				.update()?;
-		},
-
-		_ => ()
+		}
 	}
 
 	Ok(())

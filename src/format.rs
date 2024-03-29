@@ -29,7 +29,7 @@ impl Format for ClangFormat {
 /// Currently only supports clang-format.
 pub fn try_locate() -> anyhow::Result<Box<dyn Format>> {
 	match which::which("clang-format") {
-		Ok(path) => Ok(Box::new(ClangFormat)),
+		Ok(_) => Ok(Box::new(ClangFormat)),
 		Err(_) => Err(anyhow::anyhow!("Couldn't find clang-format."))
 	}
 }
