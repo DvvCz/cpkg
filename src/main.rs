@@ -6,6 +6,7 @@ use crate::compiler::CompilerFlags;
 
 mod compiler;
 mod docgen;
+mod format;
 
 /// Dead simple C package manager
 #[derive(Parser)]
@@ -38,11 +39,14 @@ enum Commands {
 	#[command(about = "Removes compiled programs from the project.\x1b[33m")]
 	Clean,
 
-	#[command(about = "Generates documentation for the project using doxygen, if available.\n\x1b[36m")]
+	#[command(about = "Generates documentation for the project using doxygen, if available.\x1b[33m")]
 	Doc {
 		#[arg(short, long)]
 		open: bool
 	},
+
+	#[command(about = "Formats the project's code using clang-format, if available.\n\x1b[36m")]
+	Format,
 
 	#[command(about = "Creates a REPL with gcc or clang, if available.\x1b[36m")]
 	Repl,
@@ -262,6 +266,22 @@ fn main() -> anyhow::Result<()> {
 			if *open {
 				backend.open(&doc)?;
 			}
+		},
+
+		Commands::Format => {
+			let config = std::path::Path::new("cpkg.toml");
+			if !config.exists() {
+				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
+			}
+
+			let backend = format::try_locate()?;
+
+			let now = std::time::Instant::now();
+
+			let proj = std::path::Path::new("src");
+			backend.format(proj)?;
+
+			println!("Formatted code in {}s", now.elapsed().as_secs_f32());
 		},
 
 		Commands::Repl => {

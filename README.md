@@ -20,7 +20,7 @@ cpkg run
 - [x] `test`
 - [x] `doc` w/ Doxygen
 - [x] `repl`
-- [ ] `format`
+- [x] `format`
 
 ## Installation
 
