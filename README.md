@@ -34,7 +34,7 @@ You can download the `cpkg` binary from [the releases](https://github.com/DvvCz/
 
 ### Cargo
 
-If you have `cargo` you can install the binary from crates.io.
+If you have `cargo` you can install from crates.io.
 
 ```
 cargo install cpkg
