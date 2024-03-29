@@ -144,12 +144,15 @@ fn main() -> anyhow::Result<()> {
 
 			let now = std::time::Instant::now();
 
+			let src = std::path::Path::new("src");
+
 			let tests = std::path::Path::new("tests");
 			let tests = walkdir::WalkDir::new(tests)
 				.into_iter()
+				.chain(walkdir::WalkDir::new(src).into_iter())
 				.flat_map(std::convert::identity) // Remove walkdir fails
 				.filter(|e| e.file_type().is_file()) // Remove directories
-				.filter(|e| e.path().extension().filter(|ext| *ext == "c").is_some()) // Only testing .c files
+				.filter(|e| e.path().to_string_lossy().ends_with(".test.c")) // Only testing .test.c files
 				.map(|e| e.path().to_owned());
 
 			let mut compiled_tests = vec![];
@@ -171,9 +174,9 @@ fn main() -> anyhow::Result<()> {
 					.output()?;
 
 				if out.status.success() {
-					println!("✅ {} {}", src.display(), "passed".green());
+					println!("{} {}", " PASSED ".on_bright_green().white(), src.display());
 				} else {
-					eprintln!("{} {}: {}", src.display(), "failed".red(), String::from_utf8_lossy(&out.stderr).trim_end());
+					eprintln!("{} {}: {}", " FAILED ".on_bright_red().white(), src.display(), String::from_utf8_lossy(&out.stderr).trim_end());
 				}
 			}
 
@@ -286,8 +289,8 @@ fn main() -> anyhow::Result<()> {
 
 			let now = std::time::Instant::now();
 
-			let proj = std::path::Path::new("src");
-			backend.format(proj)?;
+			backend.format(std::path::Path::new("src"))?;
+			backend.format(std::path::Path::new("tests"))?;
 
 			println!("Formatted code in {}s", now.elapsed().as_secs_f32());
 		},
