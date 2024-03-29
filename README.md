@@ -1,8 +1,12 @@
 # cpkg
 
-A dead simple C package manager.
 
-It just creates and compiles projects for you, handling your respective backends (gcc, clang) automatically. Inspired by the convenience of Rust's `cargo`.
+> A dead simple C package manager.
+
+This is essentially an all-in-one wrapper for gcc, clang, doxygen, clang-format, etc.  
+`cpkg` automatically detects which are present on your system, allowing you to use them with one simple cli.
+
+Inspired by the convenience of `cargo` and `bun`.
 
 ## Usage
 

@@ -2,8 +2,6 @@ use clap::{Parser, Subcommand};
 use indoc::indoc;
 use colored::Colorize;
 
-use crate::compiler::CompilerFlags;
-
 mod compiler;
 mod docgen;
 mod format;
@@ -102,6 +100,60 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 	Ok(())
 }
 
+#[derive(serde::Deserialize)]
+struct Config {
+	package: ConfigPackage,
+
+	compiler: Option<ConfigCompiler>,
+	formatter: Option<ConfigFormatter>,
+	docgen: Option<ConfigDocgen>,
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigPackage {
+	name: String,
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigCompiler {
+	default: Option<String>,
+	flags: Option<Vec<String>>,
+
+	gcc: Option<ConfigGcc>,
+	clang: Option<ConfigClang>
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigGcc {
+	flags: Option<Vec<String>>
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigClang {
+	flags: Option<Vec<String>>
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigFormatter {
+	clang_format: toml::Table,
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigClangFormat {
+	style: String
+}
+
+
+#[derive(serde::Deserialize)]
+struct ConfigDocgen {
+	doxygen: ConfigDoxygen,
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigDoxygen {
+	doxyfile: String,
+}
+
 fn main() -> anyhow::Result<()> {
 	let args = Cli::parse();
 
@@ -131,6 +183,14 @@ fn main() -> anyhow::Result<()> {
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
 			}
+
+			let config = std::fs::read_to_string(config)?;
+			let config = toml::from_str::<Config>(&config)?;
+
+			let flags = config
+				.compiler
+				.and_then(|c| c.flags)
+				.unwrap_or(vec![]);
 
 			let target = std::path::Path::new("target");
 			if !target.exists() {
@@ -167,7 +227,7 @@ fn main() -> anyhow::Result<()> {
 				let hash = hasher.finish().to_string();
 
 				let out = out.join(hash);
-				backend.compile(&test_path, &[], &out, &Default::default())?;
+				backend.compile(&test_path, &[], &out, &flags)?;
 				compiled_tests.push((test_path, out));
 			}
 
@@ -191,6 +251,14 @@ fn main() -> anyhow::Result<()> {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
 			}
 
+			let config = std::fs::read_to_string(config)?;
+			let config = toml::from_str::<Config>(&config)?;
+
+			let flags = config
+				.compiler
+				.and_then(|c| c.flags)
+				.unwrap_or(vec![]);
+
 			let main = std::path::Path::new("src/main.c");
 			if !main.exists() {
 				anyhow::bail!("No entrypoint found (create src/main.c)");
@@ -205,7 +273,7 @@ fn main() -> anyhow::Result<()> {
 
 			let out = target.join("out");
 			let backend = compiler::try_locate()?;
-			backend.compile(main, &[], &out, &Default::default())?;
+			backend.compile(main, &[], &out, &flags)?;
 
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
@@ -222,7 +290,7 @@ fn main() -> anyhow::Result<()> {
 				let temp_bin = temp.join("cpkg_run");
 
 				let b = compiler::try_locate()?;
-				b.compile(&path, &[], &temp_bin, &Default::default())?;
+				b.compile(&path, &[], &temp_bin, &[])?;
 
 				std::process::Command::new(&temp_bin)
 					.spawn()?;
@@ -234,6 +302,14 @@ fn main() -> anyhow::Result<()> {
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
 			}
+
+			let config = std::fs::read_to_string(config)?;
+			let config = toml::from_str::<Config>(&config)?;
+
+			let flags = config
+				.compiler
+				.and_then(|c| c.flags)
+				.unwrap_or(vec![]);
 
 			let main = std::path::Path::new("src/main.c");
 			if !main.exists() {
@@ -248,7 +324,7 @@ fn main() -> anyhow::Result<()> {
 			let out = target.join("out");
 
 			let b = compiler::try_locate()?;
-			b.compile(main, &[], &out, &Default::default())?;
+			b.compile(main, &[], &out, &flags)?;
 
 			std::process::Command::new(out)
 				.spawn()?;
@@ -275,6 +351,9 @@ fn main() -> anyhow::Result<()> {
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
 			}
+
+			let config = std::fs::read_to_string(config)?;
+			let config = toml::from_str::<Config>(&config)?;
 
 			let backend = docgen::try_locate()?;
 
@@ -305,6 +384,9 @@ fn main() -> anyhow::Result<()> {
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
 			}
+
+			let config = std::fs::read_to_string(config)?;
+			let config = toml::from_str::<Config>(&config)?;
 
 			let backend = format::try_locate()?;
 
@@ -345,7 +427,7 @@ fn main() -> anyhow::Result<()> {
 					}}
 				"#))?;
 
-				match backend.compile(&temp_repl, &[], &temp_bin, &CompilerFlags::REPL) {
+				match backend.compile(&temp_repl, &[], &temp_bin, &["-w".to_owned()]) {
 					Ok(_) => {
 						let mut out = std::process::Command::new(&temp_bin)
 							.output()?;
