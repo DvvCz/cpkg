@@ -1,5 +1,5 @@
 pub trait Compiler {
-	fn compile(&self, file: &std::path::Path, deps: &[std::path::PathBuf], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()>;
+	fn compile(&self, file: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()>;
 }
 
 pub struct Gcc {
@@ -7,7 +7,7 @@ pub struct Gcc {
 }
 
 impl Compiler for Gcc {
-	fn compile(&self, file: &std::path::Path, _deps: &[std::path::PathBuf], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()> {
+	fn compile(&self, file: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()> {
 		let mut cmd = std::process::Command::new(&self.path);
 
 		let mut cmd = cmd
@@ -15,6 +15,12 @@ impl Compiler for Gcc {
 			.arg("-o")
 			.arg(to)
 			.args(flags);
+
+		for dep in deps { // Include dependency folder
+			cmd = cmd
+				.arg("-I")
+				.arg(dep);
+		}
 
 		let e = cmd
 			.spawn()?

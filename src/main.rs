@@ -34,7 +34,10 @@ enum Commands {
 	},
 
 	#[command(about = "Runs the project's test suite.\n\x1b[33m")]
-	Test,
+	Test {
+		#[arg(short, long)]
+		print: bool
+	},
 
 	#[command(about = "Removes compiled programs from the project.\x1b[33m")]
 	Clean,
@@ -178,7 +181,7 @@ fn main() -> anyhow::Result<()> {
 			}
 		},
 
-		Commands::Test => {
+		Commands::Test { print } => {
 			let config = std::path::Path::new("cpkg.toml");
 			if !config.exists() {
 				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
@@ -208,8 +211,9 @@ fn main() -> anyhow::Result<()> {
 
 			let src = std::path::Path::new("src");
 
-			let tests = std::path::Path::new("tests");
-			let tests = walkdir::WalkDir::new(tests)
+			let tests_path = std::path::Path::new("tests");
+
+			let tests = walkdir::WalkDir::new(tests_path)
 				.into_iter()
 				.chain(walkdir::WalkDir::new(src).into_iter())
 				.flat_map(std::convert::identity) // Remove walkdir fails
@@ -219,21 +223,26 @@ fn main() -> anyhow::Result<()> {
 
 			let mut compiled_tests = vec![];
 
-			for test_path in tests { // Todo: Convert to iterator
+			for path in tests { // Todo: Convert to iterator
 				use std::hash::{Hash, Hasher};
 
 				let mut hasher = std::hash::DefaultHasher::new();
-				test_path.hash(&mut hasher);
+				path.hash(&mut hasher);
 				let hash = hasher.finish().to_string();
 
 				let out = out.join(hash);
-				backend.compile(&test_path, &[], &out, &flags)?;
-				compiled_tests.push((test_path, out));
+				backend.compile(&path, &[src, tests_path], &out, &flags)?;
+				compiled_tests.push((path, out));
 			}
 
 			for (src, compiled) in &compiled_tests {
-				let out = std::process::Command::new(compiled)
-					.output()?;
+				let mut out = std::process::Command::new(compiled);
+
+				let out = if *print {
+					out.spawn()?.wait_with_output()?
+				} else {
+					out.output()?
+				};
 
 				if out.status.success() {
 					println!("{} {}", " PASSED ".on_bright_green().white(), src.display());
@@ -259,7 +268,9 @@ fn main() -> anyhow::Result<()> {
 				.and_then(|c| c.flags)
 				.unwrap_or(vec![]);
 
-			let main = std::path::Path::new("src/main.c");
+			let src = std::path::Path::new("src");
+
+			let main = src.join("main.c");
 			if !main.exists() {
 				anyhow::bail!("No entrypoint found (create src/main.c)");
 			}
@@ -273,7 +284,7 @@ fn main() -> anyhow::Result<()> {
 
 			let out = target.join("out");
 			let backend = compiler::try_locate()?;
-			backend.compile(main, &[], &out, &flags)?;
+			backend.compile(&main, &[src], &out, &flags)?;
 
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
@@ -282,15 +293,15 @@ fn main() -> anyhow::Result<()> {
 			if let Some(path) = path {
 				let path = std::path::Path::new(path);
 
-				if !path.exists() {
-					anyhow::bail!("File does not exist.");
+				if !path.is_file() {
+					anyhow::bail!("Path does not exist or is not a file.");
 				}
 
 				let temp = std::env::temp_dir();
 				let temp_bin = temp.join("cpkg_run");
 
 				let b = compiler::try_locate()?;
-				b.compile(&path, &[], &temp_bin, &[])?;
+				b.compile(&path, &[ path.parent().unwrap() ], &temp_bin, &[])?;
 
 				std::process::Command::new(&temp_bin)
 					.spawn()?;
@@ -311,7 +322,9 @@ fn main() -> anyhow::Result<()> {
 				.and_then(|c| c.flags)
 				.unwrap_or(vec![]);
 
-			let main = std::path::Path::new("src/main.c");
+			let src = std::path::Path::new("src");
+
+			let main = src.join("main.c");
 			if !main.exists() {
 				anyhow::bail!("No entrypoint found (create src/main.c)");
 			}
@@ -324,7 +337,7 @@ fn main() -> anyhow::Result<()> {
 			let out = target.join("out");
 
 			let b = compiler::try_locate()?;
-			b.compile(main, &[], &out, &flags)?;
+			b.compile(&main, &[src], &out, &flags)?;
 
 			std::process::Command::new(out)
 				.spawn()?;
