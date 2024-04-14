@@ -1,5 +1,6 @@
 pub trait Compiler {
-	fn compile(&self, file: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()>;
+	fn compile(&self, main: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()>;
+	fn get_compile_command(&self, main: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> std::process::Command;
 }
 
 pub struct Gcc {
@@ -7,20 +8,26 @@ pub struct Gcc {
 }
 
 impl Compiler for Gcc {
-	fn compile(&self, file: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()> {
+	fn get_compile_command(&self, main: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> std::process::Command {
 		let mut cmd = std::process::Command::new(&self.path);
 
-		let mut cmd = cmd
-			.arg(file)
+		cmd
+			.arg(main)
 			.arg("-o")
 			.arg(to)
 			.args(flags);
 
 		for dep in deps { // Include dependency folder
-			cmd = cmd
+			cmd
 				.arg("-I")
 				.arg(dep);
 		}
+
+		cmd
+	}
+
+	fn compile(&self, file: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()> {
+		let mut cmd = self.get_compile_command(file, deps, to, flags);
 
 		let e = cmd
 			.spawn()?

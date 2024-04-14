@@ -48,14 +48,25 @@ enum Commands {
 		open: bool
 	},
 
-	#[command(about = "Formats the project's code using clang-format, if available.\n\x1b[36m")]
+	#[command(about = "Formats the project's code using clang-format, if available.\x1b[33m")]
 	Format,
+
+	#[command(about = "Generates a project file for use with other build managers.\n\x1b[36m")]
+	Generate {
+		#[command(subcommand)]
+		kind: GenerateCommand
+	},
 
 	#[command(about = "Creates a REPL with gcc or clang, if available.\x1b[36m")]
 	Repl,
 
 	#[command(about = "Updates to the latest version of cpkg.\n\x1b[35m")]
 	Upgrade
+}
+
+#[derive(Subcommand)]
+enum GenerateCommand {
+	Make,
 }
 
 fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
@@ -115,6 +126,8 @@ struct Config {
 #[derive(serde::Deserialize)]
 struct ConfigPackage {
 	name: String,
+	/// Optional location to output the target binary
+	bin: Option<String>
 }
 
 #[derive(serde::Deserialize)]
@@ -282,7 +295,12 @@ fn main() -> anyhow::Result<()> {
 
 			let now = std::time::Instant::now();
 
-			let out = target.join("out");
+			let out = if let Some(p) = config.package.bin {
+				std::path::PathBuf::from(p)
+			} else {
+				target.join(config.package.name)
+			};
+
 			let backend = compiler::try_locate()?;
 			backend.compile(&main, &[src], &out, &flags)?;
 
@@ -334,7 +352,11 @@ fn main() -> anyhow::Result<()> {
 				std::fs::create_dir(target)?;
 			}
 
-			let out = target.join("out");
+			let out = if let Some(p) = config.package.bin {
+				std::path::PathBuf::from(p)
+			} else {
+				target.join(config.package.name)
+			};
 
 			let b = compiler::try_locate()?;
 			b.compile(&main, &[src], &out, &flags)?;
@@ -409,6 +431,63 @@ fn main() -> anyhow::Result<()> {
 			backend.format(std::path::Path::new("tests"))?;
 
 			println!("Formatted code in {}s", now.elapsed().as_secs_f32());
+		},
+
+
+		Commands::Generate { kind } => {
+			match kind {
+				GenerateCommand::Make => {
+					let config = std::path::Path::new("cpkg.toml");
+					if !config.exists() {
+						anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
+					}
+
+					let config = std::fs::read_to_string(config)?;
+					let config = toml::from_str::<Config>(&config)?;
+
+					let flags = config
+						.compiler
+						.and_then(|c| c.flags)
+						.unwrap_or(vec![]);
+
+					let src = std::path::Path::new("src");
+
+					let main = src.join("main.c");
+					if !main.exists() {
+						anyhow::bail!("No entrypoint found (create src/main.c)");
+					}
+		
+					let target = std::path::Path::new("target");
+					if !target.exists() {
+						std::fs::create_dir(target)?;
+					}
+		
+					let now = std::time::Instant::now();
+
+					let out = if let Some(p) = config.package.bin {
+						std::path::PathBuf::from(p)
+					} else {
+						target.join(config.package.name)
+					};
+		
+					let backend = compiler::try_locate()?;
+
+					let cmd = backend.get_compile_command(&main, &[], &out, &flags);
+
+					let cc = cmd.get_program();
+
+					let make = indoc::formatdoc! {"
+						CC = {cc:?}
+
+						main:
+							{cmd:?}
+					"};
+
+					std::fs::write("Makefile", make)?;
+
+					println!("Generated Makefile in {}s", now.elapsed().as_secs_f32());
+				}
+			}
 		},
 
 		Commands::Repl => {
