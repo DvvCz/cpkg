@@ -57,7 +57,23 @@ enum Commands {
 		kind: GenerateCommand
 	},
 
-	#[command(about = "Creates a REPL with gcc or clang, if available.\x1b[36m")]
+	#[command(about = "Adds a dependency to cpkg.toml.\x1b[36m")]
+	Add {
+		name: String,
+
+		/// Adds the dependency as a git dependency.
+		#[arg(long)]
+		git: Option<String>,
+
+		/// Adds the dependency, as a local file path to symlink.
+		#[arg(long)]
+		path: Option<String>,
+	},
+
+	#[command(about = "Installs dependencies from cpkg project.\n\x1b[34m")]
+	Install,
+
+	#[command(about = "Creates a REPL with gcc or clang, if available.\x1b[34m")]
 	Repl,
 
 	#[command(about = "Updates to the latest version of cpkg.\n\x1b[35m")]
@@ -66,6 +82,7 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum GenerateCommand {
+	#[command(about = "Creates a Makefile in the project directory")]
 	Make,
 }
 
@@ -104,33 +121,49 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 		[dependencies]
 	"#})?;
 
-	if which::which("git").is_ok() {
+	if let Ok(git) = which::which("git") {
 		let ignore = proj.join(".gitignore");
 		std::fs::write(ignore, indoc!{r#"
 			/target
 		"#})?;
+
+		std::process::Command::new(git)
+			.arg("init")
+			.output()?;
 	}
 
 	Ok(())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct Config {
 	package: ConfigPackage,
+	dependencies: std::collections::HashMap<String, ConfigDependency>,
 
 	compiler: Option<ConfigCompiler>,
 	formatter: Option<ConfigFormatter>,
 	docgen: Option<ConfigDocgen>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigPackage {
 	name: String,
 	/// Optional location to output the target binary
 	bin: Option<String>
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+enum ConfigDependency {
+	Path {
+		path: String,
+	},
+	Git {
+		git: String
+	}
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigCompiler {
 	default: Option<String>,
 	flags: Option<Vec<String>>,
@@ -139,35 +172,47 @@ struct ConfigCompiler {
 	clang: Option<ConfigClang>
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigGcc {
 	flags: Option<Vec<String>>
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigClang {
 	flags: Option<Vec<String>>
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigFormatter {
 	clang_format: toml::Table,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigClangFormat {
 	style: String
 }
 
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigDocgen {
 	doxygen: ConfigDoxygen,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigDoxygen {
 	doxyfile: String,
+}
+
+fn get_config() -> anyhow::Result<Config> {
+	let config = std::path::Path::new("cpkg.toml");
+	if !config.exists() {
+		anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
+	}
+
+	let config = std::fs::read_to_string(config)?;
+	let config = toml::from_str::<Config>(&config)?;
+
+	Ok(config)
 }
 
 fn main() -> anyhow::Result<()> {
@@ -186,22 +231,18 @@ fn main() -> anyhow::Result<()> {
 		},
 
 		Commands::Init => {
-			let p = std::env::current_dir()?;
-			if p.read_dir()?.next().is_none() {
-				init_project(&p)?;
+			let cd = std::env::current_dir()?;
+			let config = cd.join("cpkg.toml");
+
+			if config.exists() {
+				anyhow::bail!("Cannot initialize project at existing cpkg project.");
 			} else {
-				anyhow::bail!("Cannot initialize project at non-empty directory");
+				init_project(&cd)?;
 			}
 		},
 
 		Commands::Test { print } => {
-			let config = std::path::Path::new("cpkg.toml");
-			if !config.exists() {
-				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
-			}
-
-			let config = std::fs::read_to_string(config)?;
-			let config = toml::from_str::<Config>(&config)?;
+			let config = get_config()?;
 
 			let flags = config
 				.compiler
@@ -223,6 +264,7 @@ fn main() -> anyhow::Result<()> {
 			let now = std::time::Instant::now();
 
 			let src = std::path::Path::new("src");
+			let vendor = std::path::Path::new("vendor");
 
 			let tests_path = std::path::Path::new("tests");
 
@@ -244,7 +286,7 @@ fn main() -> anyhow::Result<()> {
 				let hash = hasher.finish().to_string();
 
 				let out = out.join(hash);
-				backend.compile(&path, &[src, tests_path], &out, &flags)?;
+				backend.compile(&path, &[src, tests_path, vendor], &out, &flags)?;
 				compiled_tests.push((path, out));
 			}
 
@@ -268,13 +310,7 @@ fn main() -> anyhow::Result<()> {
 		},
 
 		Commands::Build => {
-			let config = std::path::Path::new("cpkg.toml");
-			if !config.exists() {
-				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
-			}
-
-			let config = std::fs::read_to_string(config)?;
-			let config = toml::from_str::<Config>(&config)?;
+			let config = get_config()?;
 
 			let flags = config
 				.compiler
@@ -282,6 +318,7 @@ fn main() -> anyhow::Result<()> {
 				.unwrap_or(vec![]);
 
 			let src = std::path::Path::new("src");
+			let vendor = std::path::Path::new("vendor");
 
 			let main = src.join("main.c");
 			if !main.exists() {
@@ -302,7 +339,7 @@ fn main() -> anyhow::Result<()> {
 			};
 
 			let backend = compiler::try_locate()?;
-			backend.compile(&main, &[src], &out, &flags)?;
+			backend.compile(&main, &[src, vendor], &out, &flags)?;
 
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
@@ -327,13 +364,7 @@ fn main() -> anyhow::Result<()> {
 				return Ok(());
 			}
 
-			let config = std::path::Path::new("cpkg.toml");
-			if !config.exists() {
-				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
-			}
-
-			let config = std::fs::read_to_string(config)?;
-			let config = toml::from_str::<Config>(&config)?;
+			let config = get_config()?;
 
 			let flags = config
 				.compiler
@@ -341,6 +372,7 @@ fn main() -> anyhow::Result<()> {
 				.unwrap_or(vec![]);
 
 			let src = std::path::Path::new("src");
+			let vendor = std::path::Path::new("vendor");
 
 			let main = src.join("main.c");
 			if !main.exists() {
@@ -359,17 +391,14 @@ fn main() -> anyhow::Result<()> {
 			};
 
 			let b = compiler::try_locate()?;
-			b.compile(&main, &[src], &out, &flags)?;
+			b.compile(&main, &[src, vendor], &out, &flags)?;
 
 			std::process::Command::new(out)
 				.spawn()?;
 		},
 
 		Commands::Clean => {
-			let config = std::path::Path::new("cpkg.toml");
-			if !config.exists() {
-				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
-			}
+			let _ = get_config()?;
 
 			let target = std::path::Path::new("target");
 			if !target.exists() {
@@ -382,14 +411,7 @@ fn main() -> anyhow::Result<()> {
 		},
 
 		Commands::Doc { open } => {
-			let config = std::path::Path::new("cpkg.toml");
-			if !config.exists() {
-				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
-			}
-
-			let config = std::fs::read_to_string(config)?;
-			let config = toml::from_str::<Config>(&config)?;
-
+			let _ = get_config()?;
 			let backend = docgen::try_locate()?;
 
 			let target = std::path::Path::new("target");
@@ -415,13 +437,7 @@ fn main() -> anyhow::Result<()> {
 		},
 
 		Commands::Format => {
-			let config = std::path::Path::new("cpkg.toml");
-			if !config.exists() {
-				anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
-			}
-
-			let config = std::fs::read_to_string(config)?;
-			let config = toml::from_str::<Config>(&config)?;
+			let _ = get_config()?;
 
 			let backend = format::try_locate()?;
 
@@ -437,13 +453,7 @@ fn main() -> anyhow::Result<()> {
 		Commands::Generate { kind } => {
 			match kind {
 				GenerateCommand::Make => {
-					let config = std::path::Path::new("cpkg.toml");
-					if !config.exists() {
-						anyhow::bail!("No cpkg.toml detected, this doesn't seem to be a valid project.");
-					}
-
-					let config = std::fs::read_to_string(config)?;
-					let config = toml::from_str::<Config>(&config)?;
+					let config = get_config()?;
 
 					let flags = config
 						.compiler
@@ -488,6 +498,72 @@ fn main() -> anyhow::Result<()> {
 					println!("Generated Makefile in {}s", now.elapsed().as_secs_f32());
 				}
 			}
+		},
+
+		Commands::Add { name, git, path } => {
+			let mut config = get_config()?;
+
+			if git.is_some() && path.is_some() {
+				anyhow::bail!("Cannot be both git and path dependencies");
+			}
+
+			let dep = if let Some(git) = git {
+				ConfigDependency::Git { git: git.clone() }
+			} else if let Some(path) = path {
+				ConfigDependency::Path { path: path.clone() }
+			} else {
+				anyhow::bail!("Must provide either --git or --path, for now.");
+			};
+
+			config.dependencies.insert(name.clone(), dep);
+
+			let config = toml::to_string::<Config>(&config)?;
+
+			std::fs::write("cpkg.toml", config)?;
+
+			println!("Added dependency to {}.", "cpkg.toml".yellow())
+		},
+
+		Commands::Install => {
+			let config = get_config()?;
+
+			let vendor = std::path::Path::new("vendor");
+
+			if !vendor.exists() {
+				std::fs::create_dir(vendor)?;
+			}
+
+			// Create include path for clangd, if present
+			// TODO: Replace with more robust compile_commands.json
+			if which::which("clangd").is_ok() {
+				let clangd = std::path::Path::new("compile_flags.txt");
+				if !clangd.exists() {
+					std::fs::write(clangd, "-I./vendor")?;
+				}
+			}
+
+			let git_cmd = which::which("git")
+				.map_err(|_| anyhow::anyhow!("You need git installed to use cpkg install, for now."))?;
+
+			let now = std::time::Instant::now();
+
+			for (name, dep) in &config.dependencies {
+				match dep {
+					ConfigDependency::Git { git } => {
+						std::process::Command::new(&git_cmd)
+							.arg("submodule")
+							.arg("add")
+							.arg(git)
+							.arg(vendor.join(name))
+							.output()?;
+					},
+					_ => {
+						anyhow::bail!("Unsupported dependency type");
+					}
+				}
+			}
+
+			println!("Installed {} dependencies in {} seconds.", config.dependencies.len().to_string().yellow(), now.elapsed().as_secs_f32().to_string().yellow());
 		},
 
 		Commands::Repl => {
