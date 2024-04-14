@@ -25,6 +25,8 @@ cpkg run
 - [x] `doc` w/ Doxygen
 - [x] `repl`
 - [x] `format`
+- [x] `add`
+- [x] `install`
 
 ## Installation
 
@@ -46,3 +48,7 @@ Or clone the repository and install it locally.
 git clone https://github.com/DvvCz/cpkg
 cargo install --path cpkg
 ```
+
+### Upgrading
+
+You can easily upgrade your `cpkg` binary using the `cpkg upgrade` command.
