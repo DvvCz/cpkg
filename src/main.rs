@@ -571,20 +571,23 @@ fn main() -> anyhow::Result<()> {
 			let now = std::time::Instant::now();
 
 			for (name, dep) in &config.dependencies {
+				let dep_path = build.join(name);
+
+				if dep_path.exists() {
+					continue;
+				}
+
 				match dep {
 					ConfigDependency::Git { git } => {
-						let path = build.join(name);
-
-						if !path.exists() {
-							std::process::Command::new(&git_cmd)
-								.arg("clone")
-								.arg(git)
-								.arg(path)
-								.spawn()?;
-						}
+						std::process::Command::new(&git_cmd)
+							.arg("clone")
+							.arg(git)
+							.arg(dep_path)
+							.spawn()?;
 					},
-					_ => {
-						anyhow::bail!("Unsupported dependency type");
+
+					ConfigDependency::Path { path } => {
+						std::fs::hard_link(path, dep_path)?;
 					}
 				}
 			}
