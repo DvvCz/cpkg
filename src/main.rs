@@ -70,6 +70,11 @@ enum Commands {
 		path: Option<String>,
 	},
 
+	#[command(about = "Removes a dependency from cpkg.toml and deletes it.\x1b[36m")]
+	Remove {
+		name: String
+	},
+
 	#[command(about = "Installs dependencies from cpkg project.\n\x1b[34m")]
 	Install,
 
@@ -249,10 +254,14 @@ fn main() -> anyhow::Result<()> {
 				.and_then(|c| c.flags)
 				.unwrap_or(vec![]);
 
+			let src = std::path::Path::new("src");
+
 			let target = std::path::Path::new("target");
 			if !target.exists() {
 				std::fs::create_dir(&target)?;
 			}
+
+			let vendor = target.join("vendor");
 
 			let out = target.join("test");
 			if !out.exists() {
@@ -262,9 +271,6 @@ fn main() -> anyhow::Result<()> {
 			let backend = compiler::try_locate()?;
 
 			let now = std::time::Instant::now();
-
-			let src = std::path::Path::new("src");
-			let vendor = std::path::Path::new("vendor");
 
 			let tests_path = std::path::Path::new("tests");
 
@@ -286,7 +292,7 @@ fn main() -> anyhow::Result<()> {
 				let hash = hasher.finish().to_string();
 
 				let out = out.join(hash);
-				backend.compile(&path, &[src, tests_path, vendor], &out, &flags)?;
+				backend.compile(&path, &[src, tests_path, &vendor], &out, &flags)?;
 				compiled_tests.push((path, out));
 			}
 
@@ -318,7 +324,6 @@ fn main() -> anyhow::Result<()> {
 				.unwrap_or(vec![]);
 
 			let src = std::path::Path::new("src");
-			let vendor = std::path::Path::new("vendor");
 
 			let main = src.join("main.c");
 			if !main.exists() {
@@ -330,6 +335,8 @@ fn main() -> anyhow::Result<()> {
 				std::fs::create_dir(target)?;
 			}
 
+			let vendor = target.join("vendor");
+
 			let now = std::time::Instant::now();
 
 			let out = if let Some(p) = config.package.bin {
@@ -339,7 +346,7 @@ fn main() -> anyhow::Result<()> {
 			};
 
 			let backend = compiler::try_locate()?;
-			backend.compile(&main, &[src, vendor], &out, &flags)?;
+			backend.compile(&main, &[src, &vendor], &out, &flags)?;
 
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
@@ -372,7 +379,6 @@ fn main() -> anyhow::Result<()> {
 				.unwrap_or(vec![]);
 
 			let src = std::path::Path::new("src");
-			let vendor = std::path::Path::new("vendor");
 
 			let main = src.join("main.c");
 			if !main.exists() {
@@ -384,6 +390,8 @@ fn main() -> anyhow::Result<()> {
 				std::fs::create_dir(target)?;
 			}
 
+			let vendor = target.join("vendor");
+
 			let out = if let Some(p) = config.package.bin {
 				std::path::PathBuf::from(p)
 			} else {
@@ -391,7 +399,7 @@ fn main() -> anyhow::Result<()> {
 			};
 
 			let b = compiler::try_locate()?;
-			b.compile(&main, &[src, vendor], &out, &flags)?;
+			b.compile(&main, &[src, &vendor], &out, &flags)?;
 
 			std::process::Command::new(out)
 				.spawn()?;
@@ -517,20 +525,35 @@ fn main() -> anyhow::Result<()> {
 
 			config.dependencies.insert(name.clone(), dep);
 
-			let config = toml::to_string::<Config>(&config)?;
-
-			std::fs::write("cpkg.toml", config)?;
+			std::fs::write("cpkg.toml", toml::to_string(&config)?)?;
 
 			println!("Added dependency to {}.", "cpkg.toml".yellow())
+		},
+
+		Commands::Remove { name } => {
+			let mut config = get_config()?;
+
+			if config.dependencies.remove(name).is_none() {
+				anyhow::bail!("Could not find dependency {} to remove.", name.yellow());
+			}
+
+			std::fs::write("cpkg.toml", toml::to_string(&config)?)?;
+			println!("Removed {} from {}.", name.yellow(), "cpkg.toml".yellow());
 		},
 
 		Commands::Install => {
 			let config = get_config()?;
 
-			let vendor = std::path::Path::new("vendor");
+			let target = std::path::Path::new("target");
 
-			if !vendor.exists() {
-				std::fs::create_dir(vendor)?;
+			if !target.exists() {
+				std::fs::create_dir(target)?;
+			}
+
+			let build = target.join("vendor");
+
+			if !build.exists() {
+				std::fs::create_dir(&build)?;
 			}
 
 			// Create include path for clangd, if present
@@ -538,7 +561,7 @@ fn main() -> anyhow::Result<()> {
 			if which::which("clangd").is_ok() {
 				let clangd = std::path::Path::new("compile_flags.txt");
 				if !clangd.exists() {
-					std::fs::write(clangd, "-I./vendor")?;
+					std::fs::write(clangd, "-I./target/vendor")?;
 				}
 			}
 
@@ -550,12 +573,15 @@ fn main() -> anyhow::Result<()> {
 			for (name, dep) in &config.dependencies {
 				match dep {
 					ConfigDependency::Git { git } => {
-						std::process::Command::new(&git_cmd)
-							.arg("submodule")
-							.arg("add")
-							.arg(git)
-							.arg(vendor.join(name))
-							.output()?;
+						let path = build.join(name);
+
+						if !path.exists() {
+							std::process::Command::new(&git_cmd)
+								.arg("clone")
+								.arg(git)
+								.arg(path)
+								.spawn()?;
+						}
 					},
 					_ => {
 						anyhow::bail!("Unsupported dependency type");
