@@ -28,7 +28,7 @@ enum Commands {
 	#[command(about = "Builds the project to the target directory using gcc or clang, if available.\x1b[31m")]
 	Build,
 
-	#[command(about = "Runs the project's main file, or a standalone c file.\x1b[31m")]
+	#[command(about = "Runs the project's main file, a standalone c file or a cpkg.toml script.\x1b[31m")]
 	Run {
 		path: Option<String>
 	},
@@ -123,6 +123,8 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 		[package]
 		name = "{name}"
 
+		[scripts]
+
 		[dependencies]
 	"#})?;
 
@@ -143,7 +145,12 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 #[derive(serde::Deserialize, serde::Serialize)]
 struct Config {
 	package: ConfigPackage,
+
+	#[serde(default)]
 	dependencies: std::collections::HashMap<String, ConfigDependency>,
+
+	#[serde(default)]
+	scripts: std::collections::HashMap<String, String>,
 
 	compiler: Option<ConfigCompiler>,
 	formatter: Option<ConfigFormatter>,
@@ -172,19 +179,20 @@ enum ConfigDependency {
 struct ConfigCompiler {
 	default: Option<String>,
 	flags: Option<Vec<String>>,
-
 	gcc: Option<ConfigGcc>,
 	clang: Option<ConfigClang>
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigGcc {
-	flags: Option<Vec<String>>
+	#[serde(default)]
+	flags: Vec<String>
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct ConfigClang {
-	flags: Option<Vec<String>>
+	#[serde(default)]
+	flags: Vec<String>
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -352,11 +360,33 @@ fn main() -> anyhow::Result<()> {
 		},
 
 		Commands::Run { path } => {
+			let config = get_config();
+
 			if let Some(path) = path {
+				if let Ok(c) = config {
+					if let Some(script) = c.scripts.get(path) {
+						#[cfg(target_os = "linux")]
+						std::process::Command::new("sh")
+							.arg("-c")
+							.arg(script)
+							.spawn()?
+							.wait()?;
+
+						#[cfg(target_os = "windows")]
+						std::process::Command::new("cmd.exe")
+							.arg("/c")
+							.arg(script)
+							.spawn()?
+							.wait()?;
+
+						return Ok(());
+					}
+				}
+
 				let path = std::path::Path::new(path);
 
 				if !path.is_file() {
-					anyhow::bail!("Path does not exist or is not a file.");
+					anyhow::bail!("Script not found: {}", path.display());
 				}
 
 				let temp = std::env::temp_dir();
@@ -371,7 +401,7 @@ fn main() -> anyhow::Result<()> {
 				return Ok(());
 			}
 
-			let config = get_config()?;
+			let config = config?;
 
 			let flags = config
 				.compiler
