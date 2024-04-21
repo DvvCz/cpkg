@@ -397,7 +397,7 @@ fn main() -> anyhow::Result<()> {
 
 				std::process::Command::new(&temp_bin)
 					.spawn()?;
-				
+
 				return Ok(());
 			}
 
@@ -423,12 +423,13 @@ fn main() -> anyhow::Result<()> {
 			let vendor = target.join("vendor");
 
 			let out = if let Some(p) = config.package.bin {
-				std::path::PathBuf::from(p)
+				std::env::current_dir()?.join(p)
 			} else {
 				target.join(config.package.name)
 			};
 
 			let b = compiler::try_locate()?;
+
 			b.compile(&main, &[src, &vendor], &out, &flags)?;
 
 			std::process::Command::new(out)
