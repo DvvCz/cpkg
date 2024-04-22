@@ -1,5 +1,9 @@
 <h1 align="center"> cpkg </h1>
 
+<p align="center">
+	A dead simple, modern package manager for C.
+</p>
+
 <div align="center">
 	<a href="https://github.com/DvvCz/cpkg/actions">
 		<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/DvvCz/cpkg/nightly.yml?label=nightly">
@@ -12,9 +16,9 @@
 	</a>
 </div>
 
-> A dead simple C package manager.
+## What is cpkg?
 
-This is an all-in-one wrapper for `gcc`, `clang`, `doxygen`, `clang-format`, etc.  
+`cpkg` is an all-in-one wrapper for tools like `gcc`, `clang`, `doxygen` and `clang-format`.  
 It automatically detects which are present on your system, allowing you to use them with one simple cli.
 
 Inspired by the convenience of modern tools like `cargo` and `bun`.
