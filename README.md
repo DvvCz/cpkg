@@ -78,6 +78,14 @@ git clone https://github.com/DvvCz/cpkg
 cargo install --path cpkg
 ```
 
+### 🛜 cURL script
+
+The other options are preferred, but there is an install script.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DvvCz/cpkg/master/install.sh | bash
+```
+
 ### 🔄 Upgrading
 
 You can easily upgrade your `cpkg` binary using the `cpkg upgrade` command.
