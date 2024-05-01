@@ -105,10 +105,7 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 		}
 	"#})?;
 
-	let tests = proj.join("tests");
-	std::fs::create_dir(&tests)?;
-
-	let main_test = tests.join("main.test.c");
+	let main_test = main.join("main.test.c");
 	std::fs::write(main_test, indoc!{r#"
 		#include <assert.h>
 
@@ -228,6 +225,56 @@ fn get_config() -> anyhow::Result<Config> {
 	Ok(config)
 }
 
+fn get_project_files(src: &std::path::Path) -> Vec<std::path::PathBuf> {
+	walkdir::WalkDir::new(src)
+		.into_iter()
+		.flat_map(std::convert::identity)
+		.filter(|e| e.path().to_string_lossy().ends_with(".c"))
+		.filter(|e| !e.path().to_string_lossy().ends_with(".test.c"))
+		.map(|e| e.into_path())
+		.collect::<Vec<_>>()
+}
+
+/* Builds the project at the cwd */
+fn build_project(config: &Config) -> anyhow::Result<std::path::PathBuf> {
+	let flags = vec![];
+
+	let flags = config
+		.compiler
+		.as_ref()
+		.and_then(|c| c.flags.as_ref())
+		.unwrap_or(&flags);
+
+	let src = std::path::Path::new("src");
+
+	let files = get_project_files(src);
+
+	if files.is_empty() {
+		anyhow::bail!("No c files were found in the project.");
+	}
+
+	let _ = files.iter().position(|p| p.file_name().unwrap() == "main.c")
+		.ok_or(anyhow::anyhow!("No main file found"))?;
+
+	let target = std::path::Path::new("target");
+	if !target.exists() {
+		std::fs::create_dir(target)?;
+	}
+
+	let vendor = target.join("vendor");
+
+	let out = if let Some(ref p) = config.package.bin {
+		std::path::PathBuf::from(p)
+	} else {
+		target.join(&config.package.name)
+	};
+
+	let backend = compiler::try_locate()?;
+	backend.compile(&files, &[src, &vendor], &out, &flags)?;
+
+	Ok(out)
+}
+
 fn main() -> anyhow::Result<()> {
 	let args = Cli::parse();
 
@@ -257,12 +304,26 @@ fn main() -> anyhow::Result<()> {
 		Commands::Test { print } => {
 			let config = get_config()?;
 
-			let flags = config
+			let mut flags = config
 				.compiler
 				.and_then(|c| c.flags)
 				.unwrap_or(vec![]);
 
+			// TODO: This is not generic over backends
+			flags.push(String::from("-DTEST=1"));
+
 			let src = std::path::Path::new("src");
+
+			let mut files = get_project_files(src);
+
+			if files.is_empty() {
+				anyhow::bail!("No c files were found in the project.");
+			}
+
+			let main_idx = files.iter().position(|p| p.file_name().unwrap() == "main.c")
+				.ok_or(anyhow::anyhow!("No main file found"))?;
+
+			files.remove(main_idx);
 
 			let target = std::path::Path::new("target");
 			if !target.exists() {
@@ -300,7 +361,10 @@ fn main() -> anyhow::Result<()> {
 				let hash = hasher.finish().to_string();
 
 				let out = out.join(hash);
-				backend.compile(&path, &[src, tests_path, &vendor], &out, &flags)?;
+				files.push(path.clone()); // Todo: This entire section of code is really bad
+				backend.compile(&files, &[src, tests_path, &vendor], &out, &flags)?;
+				files.pop();
+
 				compiled_tests.push((path, out));
 			}
 
@@ -326,35 +390,9 @@ fn main() -> anyhow::Result<()> {
 		Commands::Build => {
 			let config = get_config()?;
 
-			let flags = config
-				.compiler
-				.and_then(|c| c.flags)
-				.unwrap_or(vec![]);
-
-			let src = std::path::Path::new("src");
-
-			let main = src.join("main.c");
-			if !main.exists() {
-				anyhow::bail!("No entrypoint found (create src/main.c)");
-			}
-
-			let target = std::path::Path::new("target");
-			if !target.exists() {
-				std::fs::create_dir(target)?;
-			}
-
-			let vendor = target.join("vendor");
-
 			let now = std::time::Instant::now();
 
-			let out = if let Some(p) = config.package.bin {
-				std::path::PathBuf::from(p)
-			} else {
-				target.join(config.package.name)
-			};
-
-			let backend = compiler::try_locate()?;
-			backend.compile(&main, &[src, &vendor], &out, &flags)?;
+			build_project(&config)?;
 
 			println!("Successfully built program in {}s", now.elapsed().as_secs_f32());
 		},
@@ -383,7 +421,7 @@ fn main() -> anyhow::Result<()> {
 					}
 				}
 
-				let path = std::path::Path::new(path);
+				let path = std::path::PathBuf::from(path);
 
 				if !path.is_file() {
 					anyhow::bail!("Script not found: {}", path.display());
@@ -393,7 +431,7 @@ fn main() -> anyhow::Result<()> {
 				let temp_bin = temp.join("cpkg_run");
 
 				let b = compiler::try_locate()?;
-				b.compile(&path, &[ path.parent().unwrap() ], &temp_bin, &[])?;
+				b.compile(&[path], &[], &temp_bin, &[])?;
 
 				std::process::Command::new(&temp_bin)
 					.spawn()?;
@@ -403,34 +441,7 @@ fn main() -> anyhow::Result<()> {
 
 			let config = config?;
 
-			let flags = config
-				.compiler
-				.and_then(|c| c.flags)
-				.unwrap_or(vec![]);
-
-			let src = std::path::Path::new("src");
-
-			let main = src.join("main.c");
-			if !main.exists() {
-				anyhow::bail!("No entrypoint found (create src/main.c)");
-			}
-
-			let target = std::path::Path::new("target");
-			if !target.exists() {
-				std::fs::create_dir(target)?;
-			}
-
-			let vendor = target.join("vendor");
-
-			let out = if let Some(p) = config.package.bin {
-				std::env::current_dir()?.join(p)
-			} else {
-				target.join(config.package.name)
-			};
-
-			let b = compiler::try_locate()?;
-
-			b.compile(&main, &[src, &vendor], &out, &flags)?;
+			let out = build_project(&config)?;
 
 			std::process::Command::new(out)
 				.spawn()?;
@@ -501,11 +512,15 @@ fn main() -> anyhow::Result<()> {
 
 					let src = std::path::Path::new("src");
 
-					let main = src.join("main.c");
-					if !main.exists() {
-						anyhow::bail!("No entrypoint found (create src/main.c)");
+					let files = get_project_files(src);
+
+					if files.is_empty() {
+						anyhow::bail!("No c files were found in the project.");
 					}
-		
+
+					let _ = files.iter().position(|p| p.file_name().unwrap() == "main.c")
+						.ok_or(anyhow::anyhow!("No main file found"))?;
+
 					let target = std::path::Path::new("target");
 					if !target.exists() {
 						std::fs::create_dir(target)?;
@@ -521,7 +536,7 @@ fn main() -> anyhow::Result<()> {
 		
 					let backend = compiler::try_locate()?;
 
-					let cmd = backend.get_compile_command(&main, &[], &out, &flags);
+					let cmd = backend.get_compile_command(&files, &[], &out, &flags);
 
 					let cc = cmd.get_program();
 
@@ -655,7 +670,7 @@ fn main() -> anyhow::Result<()> {
 					}}
 				"#))?;
 
-				match backend.compile(&temp_repl, &[], &temp_bin, &["-w".to_owned()]) {
+				match backend.compile(&[temp_repl.clone()], &[], &temp_bin, &["-w".to_owned()]) {
 					Ok(_) => {
 						let mut out = std::process::Command::new(&temp_bin)
 							.output()?;

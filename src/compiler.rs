@@ -1,6 +1,6 @@
 pub trait Compiler {
-	fn compile(&self, main: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()>;
-	fn get_compile_command(&self, main: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> std::process::Command;
+	fn compile(&self, files: &[std::path::PathBuf], deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()>;
+	fn get_compile_command(&self, files: &[std::path::PathBuf], deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> std::process::Command;
 }
 
 pub struct Gcc {
@@ -8,11 +8,11 @@ pub struct Gcc {
 }
 
 impl Compiler for Gcc {
-	fn get_compile_command(&self, main: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> std::process::Command {
+	fn get_compile_command(&self, files: &[std::path::PathBuf], deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> std::process::Command {
 		let mut cmd = std::process::Command::new(&self.path);
 
 		cmd
-			.arg(main)
+			.args(files)
 			.arg("-o")
 			.arg(to)
 			.args(flags);
@@ -26,8 +26,8 @@ impl Compiler for Gcc {
 		cmd
 	}
 
-	fn compile(&self, file: &std::path::Path, deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()> {
-		let mut cmd = self.get_compile_command(file, deps, to, flags);
+	fn compile(&self, files: &[std::path::PathBuf], deps: &[&std::path::Path], to: &std::path::Path, flags: &[String]) -> anyhow::Result<()> {
+		let mut cmd = self.get_compile_command(files, deps, to, flags);
 
 		let e = cmd
 			.spawn()?
