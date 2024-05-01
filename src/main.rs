@@ -105,7 +105,7 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 		}
 	"#})?;
 
-	let main_test = main.join("main.test.c");
+	let main_test = src.join("main.test.c");
 	std::fs::write(main_test, indoc!{r#"
 		#include <assert.h>
 
@@ -133,6 +133,7 @@ fn init_project(proj: &std::path::Path) -> std::io::Result<()> {
 
 		std::process::Command::new(git)
 			.arg("init")
+			.current_dir(proj)
 			.output()?;
 	}
 
