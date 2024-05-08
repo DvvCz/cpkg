@@ -9,17 +9,24 @@ impl Docgen for Doxygen {
 	fn generate(&self, _src: &std::path::Path, to: &std::path::Path) -> anyhow::Result<()> {
 		let config = to.join("Doxyfile");
 
-		std::fs::write(&config, indoc::formatdoc! {"
-			INPUT=../../src
-			OUTPUT_DIRECTORY=.
-		"})?;
+		#[rustfmt::skip]
+		std::fs::write(
+			&config,
+			indoc::formatdoc! {"
+				INPUT=../../src
+				OUTPUT_DIRECTORY=.
+			"}
+		)?;
 
 		let out = std::process::Command::new("doxygen")
 			.current_dir(to)
 			.output()?;
 
 		if !out.status.success() {
-			anyhow::bail!("Failed to generate documentation: {}", String::from_utf8_lossy(&out.stderr));
+			anyhow::bail!(
+				"Failed to generate documentation: {}",
+				String::from_utf8_lossy(&out.stderr)
+			);
 		}
 
 		Ok(())
@@ -44,7 +51,10 @@ impl Docgen for Cldoc {
 			.output()?;
 
 		if !out.status.success() {
-			anyhow::bail!("Failed to generate documentation: {}", String::from_utf8_lossy(&out.stderr));
+			anyhow::bail!(
+				"Failed to generate documentation: {}",
+				String::from_utf8_lossy(&out.stderr)
+			);
 		}
 
 		Ok(())
@@ -57,9 +67,7 @@ impl Docgen for Cldoc {
 
 #[cfg(target_os = "linux")]
 fn start_program(p: &std::path::Path) -> anyhow::Result<()> {
-	std::process::Command::new("xdg-open")
-		.arg(p)
-		.output()?;
+	std::process::Command::new("xdg-open").arg(p).output()?;
 
 	Ok(())
 }
@@ -84,7 +92,7 @@ pub fn try_locate() -> anyhow::Result<Box<dyn Docgen>> {
 		Ok(_) => Ok(Box::new(Doxygen)),
 		Err(_) => match which::which("cldoc") {
 			Ok(_) => Ok(Box::new(Cldoc)),
-			Err(_) => Err(anyhow::anyhow!("Couldn't find doxygen or cldoc."))
-		}
+			Err(_) => Err(anyhow::anyhow!("Couldn't find doxygen or cldoc.")),
+		},
 	}
 }
