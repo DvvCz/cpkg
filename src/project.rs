@@ -323,11 +323,11 @@ impl<'a> Project<'a> {
 	}
 
 	/// Returns PathBuf to desired executable location
-	pub fn build_out(&self, entrypoint: Option<&String>) -> std::path::PathBuf {
+	pub fn build_out(&self, entrypoint: Option<&std::path::Path>) -> std::path::PathBuf {
 		if let Some(ref bin) = self.config.package.bin {
 			std::path::PathBuf::from(bin)
 		} else if let Some(entrypoint) = entrypoint {
-			self.target().join(entrypoint)
+			self.target().join(entrypoint.file_stem().unwrap())
 		} else {
 			self.target().join(&self.config.package.name)
 		}
@@ -346,10 +346,9 @@ impl<'a> Project<'a> {
 			std::fs::create_dir(self.target())?;
 		}
 
-		let out = self.build_out(entrypoint.as_ref());
-
 		if let Some(entrypoint) = entrypoint {
 			let entrypoint = src.join(entrypoint).with_extension("c");
+			let out = self.build_out(Some(&entrypoint));
 
 			let mut source_files = self.source_files(&src).collect::<Vec<_>>();
 			if let Some(pos) = source_files.iter().position(|p| **p == entrypoint) {
@@ -367,6 +366,7 @@ impl<'a> Project<'a> {
 			Ok(out)
 		} else { /* Traditional main entrypoint */
 			let main = src.join("main.c");
+			let out = self.build_out(None);
 
 			if main.exists() {
 				let source_files = self.source_files(&src).collect::<Vec<_>>();
