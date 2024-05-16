@@ -25,8 +25,8 @@ impl Compiler for Gcc {
 		indoc::formatdoc! {"
 			CC = {cc}
 
-			{name}: $(wildcard src/**/*)
-				$(CC) $(wildcard src/**/*.c) -o {bin} {flags}
+			{name}: $(wildcard src/*)
+				$(CC) $(wildcard src/*.c) -o {bin} {flags}
 		"}
 	}
 

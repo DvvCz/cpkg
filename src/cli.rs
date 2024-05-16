@@ -54,7 +54,7 @@ pub enum Commands {
 		open: bool,
 	},
 
-	#[command(about = "Formats the project's code using clang-format, if available.\x1b[33m")]
+	#[command(about = "Formats the project's code using clang-format, if available.\x1b[33m", aliases = &["fmt"])]
 	Format,
 
 	#[command(about = "Generates a project file for use with other build managers.\n\x1b[36m")]
