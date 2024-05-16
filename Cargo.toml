@@ -16,7 +16,7 @@ colored = "2.1.0"
 indoc = "2.0.5"
 nestify = "0.3.3"
 rustyline = "14.0.0"
-self_update = "0.40.0"
+self_update = { version = "0.40.0", features = ["rustls"] }
 serde = { version = "1.0.200", features = ["derive"] }
 tempfile = "3.10.1"
 toml = "0.8.12"

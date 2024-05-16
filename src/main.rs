@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
 
 			let now = std::time::Instant::now();
 
-			proj.build(compiler::try_locate()?.as_ref(), None)?;
+			proj.build(compiler::try_locate()?.as_ref(), bin)?;
 
 			println!(
 				"Successfully built program(s) in {}s",
@@ -68,7 +68,7 @@ fn main() -> anyhow::Result<()> {
 			);
 		}
 
-		cli::Commands::Run { path } => {
+		cli::Commands::Run { path, bin } => {
 			let proj = Project::open(&cd);
 
 			if let Some(script) = path {
@@ -111,7 +111,7 @@ fn main() -> anyhow::Result<()> {
 				}
 			}
 
-			let out = proj?.build(compiler::try_locate()?.as_ref(), None)?;
+			let out = proj?.build(compiler::try_locate()?.as_ref(), bin)?;
 
 			std::process::Command::new(out).spawn()?;
 		}

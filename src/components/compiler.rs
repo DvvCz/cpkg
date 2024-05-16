@@ -20,7 +20,7 @@ impl Compiler for Gcc {
 
 		let name = proj.name();
 		let flags = proj.build_flags(self as &dyn Compiler).join(" ");
-		let bin = proj.build_out().display().to_string();
+		let bin = proj.build_out(None).display().to_string();
 
 		indoc::formatdoc! {"
 			CC = {cc}
@@ -48,7 +48,14 @@ impl Compiler for Gcc {
 
 		let e = cmd.output()?;
 
-		anyhow::ensure!(e.status.success(), String::from_utf8(e.stderr)?);
+		if !e.status.success() {
+			let msg = String::from_utf8_lossy(&e.stderr);
+			if msg.find("multiple definition of `main").is_some() { /* todo: should be backend agnostic, moved upward */
+				anyhow::bail!("{msg}\n(cpkg: did you mean to run with --bin?)");
+			} else {
+				anyhow::bail!("{msg}");
+			}
+		}
 
 		Ok(())
 	}

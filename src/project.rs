@@ -323,9 +323,11 @@ impl<'a> Project<'a> {
 	}
 
 	/// Returns PathBuf to desired executable location
-	pub fn build_out(&self) -> std::path::PathBuf {
+	pub fn build_out(&self, entrypoint: Option<&String>) -> std::path::PathBuf {
 		if let Some(ref bin) = self.config.package.bin {
 			std::path::PathBuf::from(bin)
+		} else if let Some(entrypoint) = entrypoint {
+			self.target().join(entrypoint)
 		} else {
 			self.target().join(&self.config.package.name)
 		}
@@ -336,20 +338,38 @@ impl<'a> Project<'a> {
 	pub fn build(
 		&self,
 		backend: &dyn crate::compiler::Compiler,
-		main: Option<&String>,
+		entrypoint: &Option<String>,
 	) -> anyhow::Result<std::path::PathBuf> {
 		let src = self.src();
 
-		/* Provided a specific entrypoint */
-		if let Some(main) = main {
-			todo!();
-		} else {
-			/* Traditional main entrypoint */
+		if !self.target().exists() {
+			std::fs::create_dir(self.target())?;
+		}
 
+		let out = self.build_out(entrypoint.as_ref());
+
+		if let Some(entrypoint) = entrypoint {
+			let entrypoint = src.join(entrypoint).with_extension("c");
+
+			let mut source_files = self.source_files(&src).collect::<Vec<_>>();
+			if let Some(pos) = source_files.iter().position(|p| **p == entrypoint) {
+				/* Swap to beginning, so that its main is registered first by linker. */
+				source_files.swap(pos, 0);
+			} else {
+				anyhow::bail!("Entrypoint {} does not exist!", entrypoint.display());
+			}
+
+			let mut flags = self.build_flags(backend).to_vec();
+			flags.push("-zmuldefs".to_owned()); /* Tell linker to allow multiple entrypoints, taking first encountered */
+
+			backend.compile(&source_files, &[&self.vendor(), &src], &out, &flags)?;
+
+			Ok(out)
+		} else { /* Traditional main entrypoint */
 			let main = src.join("main.c");
+
 			if main.exists() {
 				let source_files = self.source_files(&src).collect::<Vec<_>>();
-				let out = self.build_out();
 				let flags = self.build_flags(backend);
 
 				backend.compile(&source_files, &[&self.vendor(), &src], &out, &flags)?;

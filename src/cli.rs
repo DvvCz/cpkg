@@ -30,7 +30,12 @@ pub enum Commands {
 	#[command(
 		about = "Runs the project's main file, a standalone c file or a cpkg.toml script.\x1b[31m"
 	)]
-	Run { path: Option<String> },
+	Run {
+		path: Option<String>,
+
+		#[arg(long)]
+		bin: Option<String>,
+	},
 
 	#[command(about = "Runs the project's test suite.\n\x1b[33m")]
 	Test {
