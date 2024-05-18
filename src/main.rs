@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
 
 			let now = std::time::Instant::now();
 
-			let results = proj.run_tests(compiler::try_locate()?.as_ref(), *print)?;
+			let results = proj.run_tests(compiler::try_locate(Some(&proj))?.as_ref(), *print)?;
 
 			for (passed, path, err) in &results {
 				if *passed {
@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
 
 			let now = std::time::Instant::now();
 
-			proj.build(compiler::try_locate()?.as_ref(), bin)?;
+			proj.build(compiler::try_locate(Some(&proj))?.as_ref(), bin)?;
 
 			println!(
 				"Successfully built program(s) in {}s",
@@ -101,7 +101,7 @@ fn main() -> anyhow::Result<()> {
 						.tempfile()?
 						.into_temp_path();
 
-					compiler::try_locate()?.compile(&[script], &[], &temp, &[])?;
+					compiler::try_locate(None)?.compile(&[script], &[], &temp, &[])?;
 
 					std::process::Command::new(&temp).spawn()?;
 
@@ -111,7 +111,8 @@ fn main() -> anyhow::Result<()> {
 				}
 			}
 
-			let out = proj?.build(compiler::try_locate()?.as_ref(), bin)?;
+			let proj = proj?;
+			let out = proj.build(compiler::try_locate(Some(&proj))?.as_ref(), bin)?;
 
 			std::process::Command::new(out).spawn()?;
 		}
@@ -131,8 +132,8 @@ fn main() -> anyhow::Result<()> {
 		}
 
 		cli::Commands::Doc { open } => {
-			let _ = Project::open(&cd)?;
-			let backend = docgen::try_locate()?;
+			let proj = Project::open(&cd)?;
+			let backend = docgen::try_locate(&proj)?;
 
 			let target = std::path::Path::new("target");
 			if !target.exists() {
@@ -160,14 +161,13 @@ fn main() -> anyhow::Result<()> {
 		}
 
 		cli::Commands::Format => {
-			let _ = Project::open(&cd)?;
+			let p = Project::open(&cd)?;
 
-			let backend = format::try_locate()?;
+			let backend = format::try_locate(&p)?;
 
 			let now = std::time::Instant::now();
 
-			backend.format(std::path::Path::new("src"))?;
-			backend.format(std::path::Path::new("tests"))?;
+			backend.format(&p)?;
 
 			println!("Formatted code in {}s", now.elapsed().as_secs_f32());
 		}
@@ -176,7 +176,7 @@ fn main() -> anyhow::Result<()> {
 			cli::GenerateCommand::Make => {
 				let proj = Project::open(&cd)?;
 
-				let backend = compiler::try_locate()?;
+				let backend = compiler::try_locate(Some(&proj))?;
 				let make = backend.makefile(&proj);
 				std::fs::write("Makefile", make)?;
 
@@ -231,7 +231,7 @@ fn main() -> anyhow::Result<()> {
 
 			println!("{}", "Please note that the repl is very basic and experimental.\nYour code will run entirely each line.".yellow());
 
-			let backend = compiler::try_locate()?;
+			let backend = compiler::try_locate(None)?;
 
 			let temp_repl = tempfile::Builder::new()
 				.prefix("cpkg-repl")

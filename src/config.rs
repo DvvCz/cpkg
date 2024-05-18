@@ -6,13 +6,13 @@ nestify::nest! {
 		pub package: pub struct ConfigPackage {
 			pub name: String,
 			/// Optional location to output the target binary
-			pub bin: Option<String>
+			pub bin: Option<std::path::PathBuf>
 		},
 
 		#[serde(default)]
 		pub dependencies: HashMap<String, #[serde(untagged)] pub enum ConfigDependency {
 			Path {
-				path: String,
+				path: std::path::PathBuf,
 			},
 			Git {
 				git: String
@@ -36,13 +36,22 @@ nestify::nest! {
 		}>,
 
 		pub formatter: Option<pub struct ConfigFormatter {
-			pub clang_format: toml::Table,
+			pub default: Option<String>,
+
+			pub clang_format: Option<pub struct ConfigClangFormat {
+				/* nada */
+			}>,
+			pub uncrustify: Option<pub struct ConfigUncrustify {
+				pub config: std::path::PathBuf
+			}>
 		}>,
 
 		pub docgen: Option<pub struct ConfigDocgen {
-			pub doxygen: pub struct ConfigDoxygen {
-				pub doxyfile: String
-			},
+			pub default: Option<String>,
+
+			pub doxygen: Option<pub struct ConfigDoxygen {
+				pub doxyfile: std::path::PathBuf
+			}>,
 		}>
 	}
 }

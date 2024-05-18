@@ -85,14 +85,57 @@ fn start_program(p: &std::path::Path) -> anyhow::Result<()> {
 	Ok(())
 }
 
+const SUPPORTED: &[(&'static str, fn() -> Box<dyn Docgen>)] = &[
+	("doxygen", || Box::new(Doxygen)),
+	("cldoc", || Box::new(Cldoc)),
+];
+
 /// Tries to find an available C compiler backend.
 /// Currently only supports gcc -> clang.
-pub fn try_locate() -> anyhow::Result<Box<dyn Docgen>> {
-	match which::which("doxygen") {
-		Ok(_) => Ok(Box::new(Doxygen)),
-		Err(_) => match which::which("cldoc") {
-			Ok(_) => Ok(Box::new(Cldoc)),
-			Err(_) => Err(anyhow::anyhow!("Couldn't find doxygen or cldoc.")),
-		},
+pub fn try_locate(proj: &crate::Project) -> anyhow::Result<Box<dyn Docgen>> {
+	let default = proj.config()
+		.docgen
+		.as_ref()
+		.map(|f| f.default.as_ref())
+		.flatten();
+
+	let backends = if let Some(d) = default {
+		match d.as_ref() {
+			"doxygen" | "cldoc" => {
+				let mut c = SUPPORTED.to_vec();
+				let target = c.iter().position(|e| e.0 == d).unwrap();
+				c.swap(0, target);
+				std::borrow::Cow::Owned(c)
+			},
+
+			_ => {
+				anyhow::bail!("Unrecognized default doc generator: {d}");
+			}
+		}
+	} else {
+		std::borrow::Cow::Borrowed(SUPPORTED)
+	};
+
+	for (bin, make) in backends.as_ref() {
+		if which::which(bin).is_ok() {
+			return Ok(make());
+		}
 	}
+
+	/* todo: cleaner impl when const for / const iterators exist */
+	const SUPPORTED_NAMES: &[&str] = &const {
+		let mut i = 0;
+		let mut arr = [""; SUPPORTED.len()];
+		while i < SUPPORTED.len() {
+			arr[i] = SUPPORTED[i].0;
+			i += 1;
+		}
+
+		arr
+	};
+
+	Err(anyhow::anyhow!(
+		"Couldn't find {}",
+		SUPPORTED_NAMES.join(" or ")
+	))
 }

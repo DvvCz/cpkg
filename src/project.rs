@@ -291,16 +291,21 @@ impl<'a> Project<'a> {
 		inline_tests.chain(explicit_tests)
 	}
 
-	fn source_files(
-		&self,
-		dir: &std::path::Path,
-	) -> impl std::iter::Iterator<Item = std::path::PathBuf> {
-		walkdir::WalkDir::new(dir)
+	pub fn c_files(&self) -> impl std::iter::Iterator<Item = std::path::PathBuf> {
+		walkdir::WalkDir::new(self.src())
 			.into_iter()
 			.flat_map(std::convert::identity)
 			.filter(|e| e.path().is_file())
 			.filter(|e| e.path().to_string_lossy().ends_with(".c"))
 			.filter(|e| !e.path().to_string_lossy().ends_with(".test.c"))
+			.map(|e| e.path().to_owned())
+	}
+
+	pub fn src_files(&self) -> impl std::iter::Iterator<Item = std::path::PathBuf> {
+		walkdir::WalkDir::new(self.src())
+			.into_iter()
+			.flat_map(std::convert::identity)
+			.filter(|e| e.path().is_file())
 			.map(|e| e.path().to_owned())
 	}
 
@@ -350,10 +355,10 @@ impl<'a> Project<'a> {
 			let entrypoint = src.join(entrypoint).with_extension("c");
 			let out = self.build_out(Some(&entrypoint));
 
-			let mut source_files = self.source_files(&src).collect::<Vec<_>>();
-			if let Some(pos) = source_files.iter().position(|p| **p == entrypoint) {
+			let mut c_files = self.c_files().collect::<Vec<_>>();
+			if let Some(pos) = c_files.iter().position(|p| **p == entrypoint) {
 				/* Swap to beginning, so that its main is registered first by linker. */
-				source_files.swap(pos, 0);
+				c_files.swap(pos, 0);
 			} else {
 				anyhow::bail!("Entrypoint {} does not exist!", entrypoint.display());
 			}
@@ -361,18 +366,19 @@ impl<'a> Project<'a> {
 			let mut flags = self.build_flags(backend).to_vec();
 			flags.push("-zmuldefs".to_owned()); /* Tell linker to allow multiple entrypoints, taking first encountered */
 
-			backend.compile(&source_files, &[&self.vendor(), &src], &out, &flags)?;
+			backend.compile(&c_files, &[&self.vendor(), &src], &out, &flags)?;
 
 			Ok(out)
-		} else { /* Traditional main entrypoint */
+		} else {
+			/* Traditional main entrypoint */
 			let main = src.join("main.c");
 			let out = self.build_out(None);
 
 			if main.exists() {
-				let source_files = self.source_files(&src).collect::<Vec<_>>();
+				let c_files = self.c_files().collect::<Vec<_>>();
 				let flags = self.build_flags(backend);
 
-				backend.compile(&source_files, &[&self.vendor(), &src], &out, &flags)?;
+				backend.compile(&c_files, &[&self.vendor(), &src], &out, &flags)?;
 
 				Ok(out)
 			} else {
@@ -392,7 +398,7 @@ impl<'a> Project<'a> {
 		let src = self.src();
 
 		let mut c_files = self
-			.source_files(&src)
+			.c_files()
 			.take_while(|f| f.file_name().unwrap() != "main.c")
 			.collect::<Vec<_>>();
 
@@ -400,6 +406,8 @@ impl<'a> Project<'a> {
 		let flags = self.build_flags(backend);
 
 		let mut compiled = vec![];
+
+		let tests = self.tests();
 
 		for test in self.test_files() {
 			let hash = {
@@ -413,7 +421,7 @@ impl<'a> Project<'a> {
 			let out_path = out_dir.join(&hash);
 
 			c_files.push(test);
-			backend.compile(&c_files, &[&src], &out_path, &flags)?;
+			backend.compile(&c_files, &[&tests, &src], &out_path, &flags)?;
 			let test = c_files.pop().unwrap();
 
 			compiled.push((test, out_path));

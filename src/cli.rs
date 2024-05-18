@@ -73,7 +73,7 @@ pub enum Commands {
 
 		/// Adds the dependency, as a local file path to symlink.
 		#[arg(long)]
-		path: Option<String>,
+		path: Option<std::path::PathBuf>,
 	},
 
 	#[command(about = "Removes a dependency from cpkg.toml and deletes it.\x1b[36m")]

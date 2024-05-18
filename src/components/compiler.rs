@@ -50,7 +50,8 @@ impl Compiler for Gcc {
 
 		if !e.status.success() {
 			let msg = String::from_utf8_lossy(&e.stderr);
-			if msg.find("multiple definition of `main").is_some() { /* todo: should be backend agnostic, moved upward */
+			if msg.find("multiple definition of `main").is_some() {
+				/* todo: should be backend agnostic, moved upward */
 				anyhow::bail!("{msg}\n(cpkg: did you mean to run with --bin?)");
 			} else {
 				anyhow::bail!("{msg}");
@@ -61,14 +62,62 @@ impl Compiler for Gcc {
 	}
 }
 
+const SUPPORTED: &[(&'static str, fn() -> Box<dyn Compiler>)] = &[
+	("gcc", || Box::new(Gcc { bin: "gcc" })),
+	("clang", || Box::new(Gcc { bin: "clang" })),
+	("cosmocc", || Box::new(Gcc { bin: "cosmocc" })),
+];
+
 /// Tries to find an available C compiler backend.
 /// Currently only supports gcc -> clang.
-pub fn try_locate() -> anyhow::Result<Box<dyn Compiler>> {
-	match which::which("gcc") {
-		Ok(_) => Ok(Box::new(Gcc { bin: "gcc" })),
-		Err(_) => match which::which("clang") {
-			Ok(_) => Ok(Box::new(Gcc { bin: "clang" })), // Should be api compatible.
-			Err(_) => Err(anyhow::anyhow!("Couldn't find gcc or clang.")),
-		},
+pub fn try_locate(proj: Option<&crate::Project>) -> anyhow::Result<Box<dyn Compiler>> {
+	let default = proj
+		.map(|p| {
+			p.config()
+				.compiler
+				.as_ref()
+				.map(|f| f.default.as_ref())
+				.flatten()
+		})
+		.flatten();
+
+	let backends = if let Some(d) = default {
+		match d.as_ref() {
+			"clang" | "gcc" | "cosmocc" => {
+				let mut c = SUPPORTED.to_vec();
+				let target = c.iter().position(|e| e.0 == d).unwrap();
+				c.swap(0, target);
+				std::borrow::Cow::Owned(c)
+			}
+
+			_ => {
+				anyhow::bail!("Unrecognized default compiler: {d}");
+			}
+		}
+	} else {
+		std::borrow::Cow::Borrowed(SUPPORTED)
+	};
+
+	for (bin, make) in backends.as_ref() {
+		if which::which(bin).is_ok() {
+			return Ok(make());
+		}
 	}
+
+	/* todo: cleaner impl when const for / const iterators exist */
+	const SUPPORTED_NAMES: &[&str] = &const {
+		let mut i = 0;
+		let mut arr = [""; SUPPORTED.len()];
+		while i < SUPPORTED.len() {
+			arr[i] = SUPPORTED[i].0;
+			i += 1;
+		}
+
+		arr
+	};
+
+	Err(anyhow::anyhow!(
+		"Couldn't find {}",
+		SUPPORTED_NAMES.join(" or ")
+	))
 }
