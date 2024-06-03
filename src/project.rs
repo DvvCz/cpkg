@@ -20,6 +20,9 @@ impl<'a> Project<'a> {
 	/// Folder containing test files
 	const TESTS: &'static str = "tests";
 
+	/// Prefix for build commands
+	const BUILD_COMMAND_PREFIX: &'static str = "cpkg::";
+
 	/*
 		Paths
 	*/
@@ -291,8 +294,8 @@ impl<'a> Project<'a> {
 		inline_tests.chain(explicit_tests)
 	}
 
-	pub fn c_files(&self) -> impl std::iter::Iterator<Item = std::path::PathBuf> {
-		walkdir::WalkDir::new(self.src())
+	pub fn c_files(&self, src: impl AsRef<std::path::Path>) -> impl std::iter::Iterator<Item = std::path::PathBuf> {
+		walkdir::WalkDir::new(src)
 			.into_iter()
 			.flat_map(std::convert::identity)
 			.filter(|e| e.path().is_file())
@@ -344,18 +347,57 @@ impl<'a> Project<'a> {
 		&self,
 		backend: &dyn crate::compiler::Compiler,
 		entrypoint: &Option<String>,
+		can_run_build: impl FnOnce() -> bool,
 	) -> anyhow::Result<std::path::PathBuf> {
-		let src = self.src();
+		let mut src = self.src();
 
 		if !self.target().exists() {
 			std::fs::create_dir(self.target())?;
+		}
+
+		let build_c = self.path.join("build.c");
+		if build_c.exists() {
+			if can_run_build() {
+				let t = tempfile::Builder::new().tempfile()?.into_temp_path();
+
+				backend.compile(&[build_c], &[], &t, &[])?;
+
+				let out = std::process::Command::new(&t).output()?;
+
+				if !out.status.success() {
+					anyhow::bail!(
+						"Build script failed: {}",
+						String::from_utf8_lossy(&out.stderr)
+					);
+				}
+
+				let out = String::from_utf8_lossy(&out.stdout);
+				let mut ptr = 0;
+
+				while let Some(r) = out[ptr..].find(Self::BUILD_COMMAND_PREFIX) {
+					let cmd = out[r..].split_once(" \t\n").map(|p| p.0).unwrap_or(&out[r..]);
+					let cmd = &cmd[Self::BUILD_COMMAND_PREFIX.len()..];
+
+					if cmd.starts_with("set_src") {
+						if let Some((_, to)) = cmd.split_once('=') {
+							src = std::env::current_dir()?.join(to.trim());
+						}
+					}
+
+					ptr = r + 1;
+				}
+			} else {
+				anyhow::bail!(
+					"This project requires a build script to run, but was not permitted to run it."
+				);
+			}
 		}
 
 		if let Some(entrypoint) = entrypoint {
 			let entrypoint = src.join(entrypoint).with_extension("c");
 			let out = self.build_out(Some(&entrypoint));
 
-			let mut c_files = self.c_files().collect::<Vec<_>>();
+			let mut c_files = self.c_files(&src).collect::<Vec<_>>();
 			if let Some(pos) = c_files.iter().position(|p| **p == entrypoint) {
 				/* Swap to beginning, so that its main is registered first by linker. */
 				c_files.swap(pos, 0);
@@ -366,7 +408,7 @@ impl<'a> Project<'a> {
 			let mut flags = self.build_flags(backend).to_vec();
 			flags.push("-zmuldefs".to_owned()); /* Tell linker to allow multiple entrypoints, taking first encountered */
 
-			backend.compile(&c_files, &[&self.vendor(), &src], &out, &flags)?;
+			backend.compile(&c_files, &[&src, &self.vendor()], &out, &flags)?;
 
 			Ok(out)
 		} else {
@@ -375,7 +417,7 @@ impl<'a> Project<'a> {
 			let out = self.build_out(None);
 
 			if main.exists() {
-				let c_files = self.c_files().collect::<Vec<_>>();
+				let c_files = self.c_files(&src).collect::<Vec<_>>();
 				let flags = self.build_flags(backend);
 
 				backend.compile(&c_files, &[&self.vendor(), &src], &out, &flags)?;
@@ -398,8 +440,8 @@ impl<'a> Project<'a> {
 		let src = self.src();
 
 		let mut c_files = self
-			.c_files()
-			.take_while(|f| f.file_name().unwrap() != "main.c")
+			.c_files(&src)
+			.filter(|f| f.file_name().unwrap() != "main.c")
 			.collect::<Vec<_>>();
 
 		let out_dir = Self::get_or_mkdir(Self::get_or_mkdir(self.target())?.join("test"))?;

@@ -63,18 +63,6 @@ const SUPPORTED: &[(&'static str, fn() -> Box<dyn Format>)] = &[
 	( "uncrustify", || Box::new(Uncrustify) )
 ];
 
-/* todo: cleaner impl when const for / const iterators exist */
-const SUPPORTED_NAMES: &[&str] = &const {
-	let mut i = 0;
-	let mut arr = [""; SUPPORTED.len()];
-	while i < SUPPORTED.len() {
-		arr[i] = SUPPORTED[i].0;
-		i += 1;
-	}
-
-	arr
-};
-
 /// Tries to find an available C formatter
 /// Currently only supports clang-format.
 pub fn try_locate(proj: &crate::Project) -> anyhow::Result<Box<dyn Format>> {
@@ -106,8 +94,5 @@ pub fn try_locate(proj: &crate::Project) -> anyhow::Result<Box<dyn Format>> {
 		}
 	}
 
-	Err(anyhow::anyhow!(
-		"Couldn't find {}",
-		SUPPORTED_NAMES.join(" or ")
-	))
+	Err(anyhow::anyhow!("Couldn't find a formatting backend"))
 }

@@ -11,6 +11,15 @@ use project::*;
 mod config;
 use config::*;
 
+fn build_script_check() -> bool {
+	println!("This project needs a build script to run. Accept? (y/n)");
+
+	let mut s = String::new();
+	std::io::stdin().read_line(&mut s).unwrap();
+
+	s.find("y").is_some()
+}
+
 fn main() -> anyhow::Result<()> {
 	let args: cli::Cli = clap::Parser::parse();
 	let cd = std::env::current_dir()?;
@@ -60,7 +69,11 @@ fn main() -> anyhow::Result<()> {
 
 			let now = std::time::Instant::now();
 
-			proj.build(compiler::try_locate(Some(&proj))?.as_ref(), bin)?;
+			proj.build(
+				compiler::try_locate(Some(&proj))?.as_ref(),
+				bin,
+				build_script_check,
+			)?;
 
 			println!(
 				"Successfully built program(s) in {}s",
@@ -112,7 +125,11 @@ fn main() -> anyhow::Result<()> {
 			}
 
 			let proj = proj?;
-			let out = proj.build(compiler::try_locate(Some(&proj))?.as_ref(), bin)?;
+			let out = proj.build(
+				compiler::try_locate(Some(&proj))?.as_ref(),
+				bin,
+				build_script_check,
+			)?;
 
 			std::process::Command::new(out).spawn()?;
 		}
@@ -239,9 +256,7 @@ fn main() -> anyhow::Result<()> {
 				.tempfile()?
 				.into_temp_path();
 
-			let temp_bin = tempfile::Builder::new()
-				.tempfile()?
-				.into_temp_path();
+			let temp_bin = tempfile::Builder::new().tempfile()?.into_temp_path();
 
 			let mut stdout = std::io::stdout().lock();
 			let mut buffer = String::new();
@@ -265,7 +280,12 @@ fn main() -> anyhow::Result<()> {
 					"#)
 				)?;
 
-				match backend.compile(&[temp_repl.to_path_buf()], &[], &temp_bin, &["-w".to_owned(), "-fdiagnostics-color=always".to_owned()]) {
+				match backend.compile(
+					&[temp_repl.to_path_buf()],
+					&[],
+					&temp_bin,
+					&["-w".to_owned(), "-fdiagnostics-color=always".to_owned()],
+				) {
 					Ok(_) => {
 						let mut out = std::process::Command::new(&temp_bin).output()?;
 
@@ -289,7 +309,7 @@ fn main() -> anyhow::Result<()> {
 					}
 					Err(e) => {
 						print!("{e}");
-					},
+					}
 				}
 			}
 		}
