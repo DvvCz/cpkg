@@ -262,6 +262,7 @@ fn main() -> anyhow::Result<()> {
 			let mut buffer = String::new();
 
 			let mut editor = rustyline::DefaultEditor::new()?;
+			let mut marker = 0;
 
 			loop {
 				let temp = editor.readline("> ")?;
@@ -273,6 +274,8 @@ fn main() -> anyhow::Result<()> {
 				std::fs::write(
 					&temp_repl,
 					indoc::formatdoc!(r#"
+						#include <stdio.h>
+
 						int main() {{
 							{total}
 							return 0;
@@ -287,18 +290,19 @@ fn main() -> anyhow::Result<()> {
 					&["-w".to_owned(), "-fdiagnostics-color=always".to_owned()],
 				) {
 					Ok(_) => {
-						let mut out = std::process::Command::new(&temp_bin).output()?;
+						let out = std::process::Command::new(&temp_bin).output()?;
 
 						if out.status.success() {
 							buffer = total; // Only update entire code if ran successfully
 
-							if out.stdout.ends_with(b"\n") {
-								stdout.write(&out.stdout)?;
-							} else {
-								// If no newline present, add one to the end to avoid breaking rendering
-								out.stdout.push(b'\n');
-								stdout.write(&out.stdout)?;
+							let visible = &out.stdout[marker..];
+
+							stdout.write(visible)?;
+							if !visible.ends_with(b"\n") {
+								stdout.write(b"\n")?;
 							}
+
+							marker = out.stdout.len();
 						} else {
 							stdout.write(b"Failed to run: ")?;
 							stdout.write(&out.stderr)?;
